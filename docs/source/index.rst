@@ -1,16 +1,69 @@
-.. somnopy documentation master file, created by
-   sphinx-quickstart on Wed Mar 26 21:42:23 2025.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+somnopy package
+===============
 
-Welcome to somnopy's documentation!
-===================================
+Submodules
+----------
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+somnopy.HumeDataLoader module
+-----------------------------
 
-   somnopy
-   modules
+.. automodule:: somnopy.HumeDataLoader
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
+somnopy.RemLogicDataLoader module
+---------------------------------
 
+.. automodule:: somnopy.RemLogicDataLoader
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+somnopy.event\_detection module
+-------------------------------
+
+.. automodule:: somnopy.event_detection
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+somnopy.metrics module
+----------------------
+
+.. automodule:: somnopy.metrics
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+somnopy.polysomnography module
+------------------------------
+
+.. automodule:: somnopy.polysomnography
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+somnopy.somno module
+--------------------
+
+.. automodule:: somnopy.somno
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+somnopy.utils module
+--------------------
+
+.. automodule:: somnopy.utils
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Module contents
+---------------
+
+.. automodule:: somnopy
+   :members:
+   :undoc-members:
+   :show-inheritance:
