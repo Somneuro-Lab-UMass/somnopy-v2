@@ -20,7 +20,9 @@ release = '0.0.8'
 extensions = [
     'sphinx.ext.autodoc',   # Enable autodoc to extract documentation from docstrings
     'sphinx.ext.napoleon',  # Optional: support for Google and NumPy style docstrings
-    # ... any other extensions you use
+    'sphinx.ext.autosummary',  # Generate summary tables for modules/classes
+    'sphinx.ext.viewcode',  # Add links to highlighted source code
+    'sphinx.ext.intersphinx',  # Link to external documentation (e.g., Python docs)
 ]
 templates_path = ['_templates']
 exclude_patterns = []
