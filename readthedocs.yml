@@ -6,8 +6,8 @@ sphinx:
 build:
   os: ubuntu-22.04
   tools:
+    nodejs: "20"
     python: "3.12"
-    sphinx: "4.0.0"
 
 
 python:
