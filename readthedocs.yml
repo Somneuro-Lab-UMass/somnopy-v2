@@ -5,9 +5,12 @@ sphinx:
 
 build:
   os: ubuntu-22.04
+  tools:
+    sphinx: "4.0.0"
+
 
 python:
   install:
     - method: pip
       path: .
-    - requirements: docs/requirements.txt  # Optional: if you have extra requirements for docs
+      extra_requirements: docs
