@@ -14,8 +14,11 @@ release = '0.0.8'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = []
-
+extensions = [
+    'sphinx.ext.autodoc',   # Enable autodoc to extract documentation from docstrings
+    'sphinx.ext.napoleon',  # Optional: support for Google and NumPy style docstrings
+    # ... any other extensions you use
+]
 templates_path = ['_templates']
 exclude_patterns = []
 
