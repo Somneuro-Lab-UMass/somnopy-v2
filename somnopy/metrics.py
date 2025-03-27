@@ -633,7 +633,7 @@ def pac(raw, coupled_events, event_summary, verbose=True):
             per_channel_results.append(metrics_stage)
     per_channel_coupling_df = pd.DataFrame(per_channel_results)
     coupling_all = pd.concat([coupling_df, per_channel_coupling_df], ignore_index=True)
-    event_summary = pd.merge(event_summary, coupling_all, on=['stage', 'channel'], how='outer')
+    event_summary = pd.merge(coupling_all, event_summary, on=['stage', 'channel'], how='outer')
 
     if verbose:
         # **Plot PETH + PAC**
@@ -969,8 +969,8 @@ def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, ver
     cp_percent_all = pd.concat([cp_percent_df, cp_percent_channel_df, cp_percent_all_channel_df], ignore_index=True)
     print('event_summary\n', event_summary)
     print('cp_percent_all\n', cp_percent_all)
-    event_summary = pd.merge(event_summary, cp_percent_all, left_on=['stage', 'channel_y'],
-                             right_on=['stage', 'channel'], how='outer')
+    event_summary = pd.merge(event_summary, cp_percent_all, #left_on=['stage', 'channel_y'],
+                             on=['stage', 'channel'], how='outer')
 
     # ** Per-Channel Calculation using the same method **
     channel_counts = filtered['ch_name'].value_counts()

@@ -304,7 +304,7 @@ class PolySomnoGraphy:
     def pac(self, verbose: bool = True, file_name: str = "Participant"):
         if self.spindles is None or self.slow_oscillations is None:
             raise Warning("Attempting to run before detect_spindles or detect_slow_oscillations")
-        event_summary = pd.merge(self.slow_oscillations[2], self.spindles[2], on=['stage'], how='outer')
+        event_summary = pd.merge(self.slow_oscillations[2], self.spindles[2], on=['stage', 'channel'], how='outer')
         cp_event, event_summary = event_lock(self.raw, self.slow_oscillations[1],
                                              self.spindles[1], event_summary, verbose=verbose)
         cp_event.insert(0, 'subject', file_name)

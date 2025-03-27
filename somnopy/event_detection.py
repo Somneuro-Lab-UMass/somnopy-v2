@@ -462,6 +462,10 @@ def SP_detection(raw: Raw, stage, target_stage=('N2', 'SWS'), method: str = "Hah
         A DataFrame containing all detected spindle events across channels
         and target stages, with columns including 'ch_id', 'ch_name',
         'start_time', 'end_time', 'peak_time', 'duration', 'amplitude', etc.
+    event_summary : pd.DataFrame
+         A DataFrame containing spindle metrics by stage and channel, with columns
+         including 'stage', 'channel', 'mean_SP_amp', 'mean_SP_dur',
+         'SP_density', 'SP_count'
     """
 
     raw_copy = raw.copy()
@@ -645,6 +649,7 @@ def SP_detection(raw: Raw, stage, target_stage=('N2', 'SWS'), method: str = "Hah
         total_dur_stage = sum([d for (stg, d, _) in stage if stg == s_val])
         num_segments = int(total_dur_stage // 30)
         sp_density = len(stage_df) / (n_channels * num_segments) if num_segments > 0 else 0
+        count = len(stage_df)
 
         stage_mapping = {0: "Wake", 1: "N1", 2: "N2", 3: "SWS", 4: "REM"}
         if verbose:
@@ -660,7 +665,8 @@ def SP_detection(raw: Raw, stage, target_stage=('N2', 'SWS'), method: str = "Hah
             'stage': s_val,
             'mean_SP_amp': mean_amp,
             'mean_SP_dur': mean_dur,
-            'SP_density': sp_density
+            'SP_density': sp_density,
+            'SP_count': count
         })
 
     SP_summary_df = pd.DataFrame(SP_summary)
@@ -673,12 +679,13 @@ def SP_detection(raw: Raw, stage, target_stage=('N2', 'SWS'), method: str = "Hah
         mean_SP_amp_all = final_SP_candidates['amplitude'].mean()
         mean_SP_dur_all = final_SP_candidates['duration'].mean()
         SP_density_all = len(final_SP_candidates) / (num_channels * num_segments_all) if num_segments_all > 0 else 0
-
+        count = len(final_SP_candidates)
         all_summary = {
             'stage': 'all',
             'mean_SP_amp': mean_SP_amp_all,
             'mean_SP_dur': mean_SP_dur_all,
-            'SP_density': SP_density_all
+            'SP_density': SP_density_all,
+            'SP_count': count
         }
 
         SP_summary_df = pd.concat([SP_summary_df, pd.DataFrame([all_summary])], ignore_index=True)
@@ -695,12 +702,14 @@ def SP_detection(raw: Raw, stage, target_stage=('N2', 'SWS'), method: str = "Hah
             mean_amp = ch_events['amplitude'].mean()
             mean_dur = ch_events['duration'].mean()
             density = len(ch_events) / num_segments if num_segments > 0 else 0
+            count = len(ch_events)
             channel_summary_list.append({
                 'stage': s_val,
                 'channel': ch,
                 'mean_SP_amp': mean_amp,
                 'mean_SP_dur': mean_dur,
-                'SP_density': density
+                'SP_density': density,
+                'SP_count': count
             })
     channel_summary_df = pd.DataFrame(channel_summary_list)
     SP_summary_df['channel'] = 'all'
@@ -716,17 +725,19 @@ def SP_detection(raw: Raw, stage, target_stage=('N2', 'SWS'), method: str = "Hah
             mean_amp = ch_events['amplitude'].mean()
             mean_dur = ch_events['duration'].mean()
             density = len(ch_events) / (num_segments_all) if num_segments_all > 0 else 0
+            count = len(ch_events)
             channel_summary_all.append({
                 'stage': 'all',
                 'channel': ch,
                 'mean_SP_amp': mean_amp,
                 'mean_SP_dur': mean_dur,
-                'SP_density': density
+                'SP_density': density,
+                'SP_count': count
             })
         channel_summary_all_df = pd.DataFrame(channel_summary_all)
         SP_summary_df = pd.concat([SP_summary_df, channel_summary_all_df], ignore_index=True)
 
-    column_order = ['stage', 'channel', 'mean_SP_amp', 'mean_SP_dur', 'SP_density']
+    column_order = ['stage', 'channel', 'mean_SP_amp', 'mean_SP_dur', 'SP_density', 'SP_count']
     SP_summary_df = SP_summary_df[column_order]
 
     return raw_copy, final_SP_candidates, SP_summary_df
