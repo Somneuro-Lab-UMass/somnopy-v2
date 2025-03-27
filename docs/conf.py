@@ -8,7 +8,8 @@ author = 'Your Name'
 release = '0.1.0'
 
 extensions = [
-    # list your Sphinx extensions here, e.g., 'sphinx.ext.autodoc'
+    'sphinx.ext.autodoc',  # Automatically document modules from docstrings
+    'sphinx.ext.napoleon',  # (Optional) Supports Google and NumPy style docstrings
 ]
 
 html_theme = "sphinx_rtd_theme"
