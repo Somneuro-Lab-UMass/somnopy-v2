@@ -1,7 +1,6 @@
 version: 2
 
-sphinx:
-  configuration: docs/conf.py
+
 
 build:
   os: ubuntu-22.04
@@ -9,6 +8,8 @@ build:
     nodejs: "20"
     python: "3.12"
 
+sphinx:
+  configuration: docs/conf.py
 
 python:
   install:
