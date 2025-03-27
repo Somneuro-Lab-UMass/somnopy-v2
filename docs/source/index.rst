@@ -10,7 +10,7 @@ Welcome to somnopy's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-
+   somnopy
 
 Indices and tables
 ==================

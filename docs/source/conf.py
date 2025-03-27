@@ -29,4 +29,4 @@ exclude_patterns = []
 
 html_theme = 'alabaster'
 html_static_path = []
-    # '/docs/_build/_static']
+# '_static']
