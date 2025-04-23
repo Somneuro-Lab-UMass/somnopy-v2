@@ -743,7 +743,7 @@ def SP_detection(raw: Raw, stage, target_stage=('N2', 'SWS'), method: str = "Hah
     return raw_copy, final_SP_candidates, SP_summary_df
 
 
-def detect_swa(raw: Raw, stages=None, file_name='id', l_freq=0.5, h_freq=4):
+def detect_swa(raw: Raw, stages=None, psg=None, file_name='id', l_freq=0.5, h_freq=4):
     """
     Compute slow wave activity (SWA) from an mne.Raw object, optionally filtering
     the analysis to only include data from specified sleep stages.
@@ -770,23 +770,29 @@ def detect_swa(raw: Raw, stages=None, file_name='id', l_freq=0.5, h_freq=4):
     """
     # Sampling frequency
     fs = raw.info['sfreq']
+    print('fs: ', fs)
     # Channel names
     ch_names = raw.info['ch_names']
     # Get the data as a numpy array (shape: n_channels x n_times)
     data = raw.get_data()
 
-    if stages is not None and raw.annotations is not None:
+    stage_mapping = {"Wake": 0, "N1": 1, "N2": 2, "SWS": 3, "REM": 4}
+
+    if stages is not None and psg is not None:
+        print(psg)
+        target_stage = [
+            stage_mapping[stg] if isinstance(stg, str) and stg in stage_mapping else stg
+            for stg in stages
+        ]
+
         mask = np.zeros(data.shape[1], dtype=bool)
-        for onset, duration, desc in zip(raw.annotations.onset, raw.annotations.duration, raw.annotations.description):
-            if desc in stages:
-                start_sample = int(onset * fs)
-                end_sample = int((onset + duration) * fs)
-                # Ensure indices remain within data bounds
-                start_sample = max(start_sample, 0)
-                end_sample = min(end_sample, data.shape[1])
-                mask[start_sample:end_sample] = True
-        if not np.any(mask):
-            raise ValueError(f"No segments found for the specified stages: {stages}")
+        idx = 0
+        for stage, duration, _ in psg:
+            for i in range(int(duration * fs)):
+                idx += i
+                if idx in range(data.shape[1]):
+                    mask[idx] = stage
+        mask = np.isin(mask, target_stage)
     else:
         # Use the entire data if no stages are provided
         mask = np.ones(data.shape[1], dtype=bool)

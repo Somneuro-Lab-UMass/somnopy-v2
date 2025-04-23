@@ -518,6 +518,7 @@ def pac(raw, coupled_events, event_summary, verbose=True):
             'modulation_index': mi_all,
             'mean_vector_length': mvl_all,
             'rayleigh_z': z_all,
+            'p_value': p_all,
             'coupling_density': cp_density_all
         })
 
@@ -574,6 +575,7 @@ def pac(raw, coupled_events, event_summary, verbose=True):
                 'modulation_index': mi_stage,
                 'mean_vector_length': mvl_stage,
                 'rayleigh_z': z_stage,
+                'p-value': p_stage,
                 'coupling_density': cp_density_stage
             })
 
@@ -1003,3 +1005,157 @@ def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, ver
     return filtered[['ch_name', 'stage', 'trough_time', 'peak_time', 'amplitude', 'Time_diff']].rename(
         columns={'trough_time': 'SO_trough_time', 'peak_time': 'SP_peak_time',
                  'amplitude': 'SP_amplitude'}), event_summary
+
+def evaluate_SO(SO_candidates):
+    plt.figure(figsize=(10, 6))
+    plt.hist(SO_candidates['p2n_start'], bins=50, color='blue', alpha=0.7)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Count")
+    plt.title("Histogram of Slow Oscillation Events Across All Channels")
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(SO_candidates['duration'], bins=50, color='blue', alpha=0.7)
+    plt.xlabel("Duration (s)")
+    plt.ylabel("Count")
+    plt.title("Histogram of Slow Oscillation Events Across All Channels")
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(SO_candidates['ptp_amplitude'], bins=50, color='blue', alpha=0.7)
+    plt.xlabel("Amplitude (microvolts)")
+    plt.ylabel("Count")
+    plt.title("Histogram of Slow Oscillation Events Across All Channels")
+    plt.tight_layout()
+    plt.show()
+
+    channels = SO_candidates['ch_name'].unique()
+    n_channels = len(channels)
+
+    # Create a figure with one subplot per channel
+    fig, axes = plt.subplots(n_channels, 1, figsize=(10, 3 * n_channels), sharex=True)
+
+    # If there's only one channel, ensure axes is iterable
+    if n_channels == 1:
+        axes = [axes]
+
+    # Loop over channels and plot the histogram for each
+    for ax, ch in zip(axes, channels):
+        # Filter data for the current channel
+        channel_data = SO_candidates[SO_candidates['ch_name'] == ch]
+
+        # Plot histogram of spindle start times
+        ax.hist(channel_data['peak_time'], bins=50, color='blue', alpha=0.7)
+        ax.set_title(f"Spindle Histogram for Channel {ch}")
+        ax.set_ylabel("Count")
+
+    # Set common x-axis label
+    axes[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.show()
+
+    channels = SO_candidates['ch_name'].unique()
+    n_channels = len(channels)
+
+    # Create a figure with one subplot per channel
+    fig, axes = plt.subplots(n_channels, 1, figsize=(10, 3 * n_channels), sharex=True)
+
+    # If there's only one channel, ensure axes is iterable
+    if n_channels == 1:
+        axes = [axes]
+
+    axes[-1].set_xlabel("Duration (s)")
+    # Loop over channels and plot the histogram for each
+    for ax, ch in zip(axes, channels):
+        # Filter data for the current channel
+        channel_data = SO_candidates[SO_candidates['ch_name'] == ch]
+
+        # Plot histogram of spindle start times
+        ax.hist(channel_data['duration'], bins=50, color='blue', alpha=0.7)
+        ax.set_title(f"Spindle duration Histogram for Channel {ch}")
+        ax.set_ylabel("Count")
+
+    # Set common x-axis label
+    axes[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.show()
+
+def evaluate_SP(SP_candidates):
+    plt.figure(figsize=(10, 6))
+    plt.hist(SP_candidates['peak_time'], bins=50, color='blue', alpha=0.7)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Count")
+    plt.title("Histogram of Spindle Events Across All Channels")
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(SP_candidates['duration'], bins=50, color='blue', alpha=0.7)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Duration")
+    plt.title("Histogram of Spindle Events Across All Channels")
+    plt.tight_layout()
+    plt.show()
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(SP_candidates['amplitude'], bins=50, color='blue', alpha=0.7)
+    plt.xlabel("Amplitude (microvolts)")
+    plt.ylabel("Count")
+    plt.title("Histogram of Spindle Events Across All Channels")
+    plt.tight_layout()
+    plt.show()
+
+    channels = SP_candidates['ch_name'].unique()
+    n_channels = len(channels)
+
+    # Create a figure with one subplot per channel
+    fig, axes = plt.subplots(n_channels, 1, figsize=(10, 3 * n_channels), sharex=True)
+
+    # If there's only one channel, ensure axes is iterable
+    if n_channels == 1:
+        axes = [axes]
+
+    # Loop over channels and plot the histogram for each
+    for ax, ch in zip(axes, channels):
+        # Filter data for the current channel
+        channel_data = SP_candidates[SP_candidates['ch_name'] == ch]
+
+        # Plot histogram of spindle start times
+        ax.hist(channel_data['peak_time'], bins=50, color='blue', alpha=0.7)
+        ax.set_title(f"Spindle Histogram for Channel {ch}")
+        ax.set_ylabel("Count")
+
+    # Set common x-axis label
+    axes[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.show()
+
+    channels = SP_candidates['ch_name'].unique()
+    n_channels = len(channels)
+
+    # Create a figure with one subplot per channel
+    fig, axes = plt.subplots(n_channels, 1, figsize=(10, 3 * n_channels), sharex=True)
+
+    # If there's only one channel, ensure axes is iterable
+    if n_channels == 1:
+        axes = [axes]
+
+    axes[-1].set_xlabel("Duration (s)")
+    # Loop over channels and plot the histogram for each
+    for ax, ch in zip(axes, channels):
+        # Filter data for the current channel
+        channel_data = SP_candidates[SP_candidates['ch_name'] == ch]
+
+        # Plot histogram of spindle start times
+        ax.hist(channel_data['duration'], bins=50, color='blue', alpha=0.7)
+        ax.set_title(f"Spindle duration Histogram for Channel {ch}")
+        ax.set_ylabel("Count")
+
+    # Set common x-axis label
+    axes[-1].set_xlabel("Time (s)")
+    plt.tight_layout()
+    plt.show()
+
+
