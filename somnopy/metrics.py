@@ -353,8 +353,45 @@ def plot_SP(SP_candidate, raw, grp_thres=0.5, sync_peak=False, interact=False, m
 
 def compute_pac_metrics(events, raw, window_size, eeg_data_dict, n_bins, sfreq, stage_dur):
     """
-    Compute PAC metrics for a given set of events (subset for a channel and optionally a stage).
-    Returns a dictionary with metrics.
+    Compute phase–amplitude coupling (PAC) metrics for spindle events relative to slow-oscillation troughs.
+
+    For each event, extracts a window of EEG data around the SO trough, computes the instantaneous phase
+    via Hilbert transform, and measures the phase at the SP peak. Aggregates across events to produce:
+      - preferred phase (pp)
+      - modulation index (mi)
+      - mean vector length (mvl)
+      - Rayleigh’s z statistic (z)
+      - coupling density per 30 s
+
+    Parameters
+    ----------
+    events : pandas.DataFrame
+        Each row is one SO–SP event with at least columns:
+        - 'ch_name' : str, channel name matching keys in `eeg_data_dict`
+        - 'SO_trough_time' : float, time of slow-oscillation trough (s)
+        - 'SP_peak_time' : float, time of spindle peak (s)
+    raw : mne.io.Raw
+        Raw object containing the full recording. Used to check total number of samples via `raw.n_times`.
+    window_size : int
+        Half-window length (in samples) around each SO trough to extract the local EEG segment.
+    eeg_data_dict : dict of {str: 1D array}
+        Maps channel names to their full-band EEG time series (NumPy arrays).
+    n_bins : int
+        Number of phase bins for estimating the amplitude-phase histogram.
+    sfreq : float
+        Sampling frequency of the EEG data in Hz.
+    stage_dur : float
+        Total duration of the sleep stage under analysis in seconds.
+
+    Returns
+    -------
+    metrics : dict
+        Dictionary containing:
+        - 'preferred_phase'      : float, angle (rad) of mean phase at SP peaks  
+        - 'modulation_index'     : float, normalized Kullback–Leibler divergence  
+        - 'mean_vector_length'   : float, magnitude of the mean phase vector  
+        - 'rayleigh_z'           : float, Rayleigh’s z statistic for nonuniformity  
+        - 'coupling_density'     : float, number of SO–SP events per 30 s of stage duration
     """
     peaks_so_phase = []
     valid_events_count = 0
@@ -407,19 +444,51 @@ def compute_pac_metrics(events, raw, window_size, eeg_data_dict, n_bins, sfreq, 
 
 def pac(raw, coupled_events, event_summary, verbose=True):
     """
-    Compute Peri-Event Time Histogram (PETH) and Phase-Amplitude Coupling (PAC)
-    between SO and spindle events in a single function.
+    Compute peri-event time histogram (PETH) and phase–amplitude coupling (PAC)
+    metrics for slow oscillation (SO) trough–spindle peak events, and plot results.
 
-    Parameters:
-    - coupled_events (pd.DataFrame): DataFrame containing SO-Spindle coupling events.
-    - raw (mne.io.Raw): Raw EEG data.
+    Parameters
+    ----------
+    raw : mne.io.Raw
+        Continuous EEG recording. Used to extract full-band data and sampling info.
+    coupled_events : pandas.DataFrame
+        Table of SO–spindle coupling events. Must include columns:
+        - 'ch_name'         : channel name for each event
+        - 'SO_trough_time'  : time (s) of each SO trough
+        - 'SP_peak_time'    : time (s) of each spindle peak
+        - 'Time_diff'       : (optional) difference SP_peak_time − SO_trough_time
+        - 'stage'           : numeric sleep stage label
+    event_summary : pandas.DataFrame
+        Summary of stage durations and basic event counts. Must include:
+        - 'stage'    : stage label (including 'all')
+        - 'stage_dur': total duration of that stage (s)
+    verbose : bool, default=True
+        If True, prints per-stage PAC statistics and displays:
+          - Left: PETH histogram with averaged SO waveform overlay.
+          - Right: Polar bar plot of PAC histogram.
 
-    Prints:
-    - Preferred Phase, Modulation Index, Mean Vector Length, Rayleigh z, and p-value.
+    Returns
+    -------
+    event_summary : pandas.DataFrame
+        Input `event_summary` augmented with PAC metrics and coupling density,
+        now including columns:
+        - preferred_phase, modulation_index, mean_vector_length,
+          rayleigh_z, p_value, coupling_density, channel
+    waveform_df : pandas.DataFrame
+        Per-stage averaged SO waveform. Columns:
+        - 'stage'      : stage label ('all' or numeric)
+        - 'so_waveform': comma-separated string of mean SO waveform (µV) samples
 
-    Plots:
-    - Left: PETH histogram.
-    - Right: PAC polar plot.
+    Notes
+    -----
+    - Uses a ±1.2 s window around SO troughs for both PETH and phase extraction.
+    - Bins PETH into 20 bins over −1.2…+1.2 s, normalized to density.
+    - Computes PAC by extracting instantaneous phase via Hilbert transform,
+      building a phase histogram (20 bins), and calculating:
+        * Modulation index (normalized KL divergence)
+        * Mean vector length
+        * Rayleigh’s z statistic and p-value
+    - Coupling density is events per 30 s per channel (or per all channels for ‘all’).
     """
     sfreq = raw.info['sfreq']  # Sampling frequency
     window = 1.2  # Time window for PETH
@@ -1007,6 +1076,34 @@ def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, ver
                  'amplitude': 'SP_amplitude'}), event_summary
 
 def evaluate_SO(SO_candidates):
+    """
+    Plot summary histograms of detected slow oscillation (SO) events.
+
+    Generates:
+      1. Overall histogram of SO start times (`p2n_start`) across all channels.
+      2. Overall histogram of SO durations (`duration`) across all channels.
+      3. Overall histogram of SO peak-to-peak amplitudes (`ptp_amplitude`) across all channels.
+      4. Per-channel histogram of SO peak times (`peak_time`).
+      5. Per-channel histogram of SO durations (`duration`).
+
+    Parameters
+    ----------
+    SO_candidates : pandas.DataFrame
+        DataFrame of detected SO events with columns:
+        - 'ch_name'       : channel identifier for each event
+        - 'p2n_start'     : SO start time in seconds
+        - 'peak_time'     : time of the SO peak in seconds
+        - 'duration'      : event duration in seconds
+        - 'ptp_amplitude' : peak-to-peak amplitude (µV)
+
+    Notes
+    -----
+    - Uses Matplotlib to create five figures:
+      * Three global histograms (start times, durations, amplitudes).
+      * Two sets of per-channel histograms (peak times and durations).
+    - Subplots share the x-axis within each figure for easy comparison.
+    - Figures are automatically laid out with `tight_layout()`.
+    """
     plt.figure(figsize=(10, 6))
     plt.hist(SO_candidates['p2n_start'], bins=50, color='blue', alpha=0.7)
     plt.xlabel("Time (s)")
@@ -1083,6 +1180,33 @@ def evaluate_SO(SO_candidates):
     plt.show()
 
 def evaluate_SP(SP_candidates):
+    """
+    Plot summary histograms of detected sleep spindle (SP) events.
+
+    Generates:
+      1. Overall histogram of spindle peak times (`peak_time`) across all channels.
+      2. Overall histogram of spindle durations (`duration`) across all channels.
+      3. Overall histogram of spindle amplitudes (`amplitude`) across all channels.
+      4. Per-channel histogram of spindle peak times (`peak_time`).
+      5. Per-channel histogram of spindle durations (`duration`).
+
+    Parameters
+    ----------
+    SP_candidates : pandas.DataFrame
+        DataFrame of detected spindle events with columns:
+        - 'ch_name'   : channel identifier for each event
+        - 'peak_time' : spindle peak time in seconds
+        - 'duration'  : event duration in seconds
+        - 'amplitude' : peak amplitude (µV)
+
+    Notes
+    -----
+    - Uses Matplotlib to create five figures:
+      * Three global histograms (peak times, durations, amplitudes).
+      * Two sets of per-channel histograms (peak times and durations).
+    - Within each multi-panel figure, subplots share the x-axis for consistency.
+    - Figures are laid out with `tight_layout()` for clean spacing.
+    """
     plt.figure(figsize=(10, 6))
     plt.hist(SP_candidates['peak_time'], bins=50, color='blue', alpha=0.7)
     plt.xlabel("Time (s)")

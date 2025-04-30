@@ -10,6 +10,30 @@ from somnopy.HumeDataLoader import HumeDataLoader  # Ensure this module is avail
 
 
 class PolySomnoGraphy:
+    """
+    Processing pipeline for EEG and hypnogram data to detect sleep events and compute metrics.
+
+    This class provides methods to load EEG data, process hypnogram scoring files, segment
+    sleep stages, detect slow oscillations (SO) and sleep spindles (SP), compute phase-amplitude
+    coupling (PAC), and compute slow-wave activity (SWA).
+
+    Attributes
+    ----------
+    raw : Optional[mne.io.BaseRaw]
+        The loaded and optionally preprocessed raw EEG data.
+    hypno : Optional[pd.DataFrame]
+        Hypnogram DataFrame containing a 'stages' column of stage labels.
+    segments : Optional[List[Tuple[int, float, float]]]
+        List of tuples (stage_label, segment_length_s, valid_duration_s) per sleep epoch.
+    spindles : Any
+        Output from SP_detection: (raw_copy, sp_event_df, sp_summary_df).
+    slow_oscillations : Any
+        Output from SO_detection: (raw_copy, so_event_df, so_summary_df).
+    swa : pd.DataFrame
+        Slow-wave activity per channel computed by detect_swa.
+    pac : Any
+        Phase-amplitude coupling results after running pac().
+    """
     def __init__(self,
                  eeg_path: str,
                  hypnogram_path: Optional[str] = None,
@@ -25,75 +49,35 @@ class PolySomnoGraphy:
                  drop_chan=()
                  ) -> None:
         """
-    A class for processing EEG and hypnogram data for sleep spindle and slow oscillation analysis.
+        Initialize processing of EEG and hypnogram data.
 
-    This class provides methods for loading EEG data, processing hypnogram files,
-    detecting slow oscillations (SOs), detecting spindles (SPs), computing phase-amplitude coupling (PAC),
-    and handling various preprocessing operations.
-
-    Parameters
-    ----------
-    eeg_path : str
-        Path to the raw EEG file.
-    hypnogram_path : Optional[str], default=None
-        Path to the hypnogram scoring file.
-    hypnogram_type : Optional[str], default=None
-        Type of hypnogram file, either `"RemLogic"` or `"Hume"`.
-    skip_header : bool, default=True
-        Whether to skip header lines in hypnogram files.
-    interval : int, default=30
-        Duration (in seconds) of each hypnogram epoch.
-    bad_epoch : bool, default=True
-        Whether to mark stage 6 epochs as bad.
-    set_up_raw : bool, default=True
-        Whether to preprocess EEG data.
-    rerefer : bool, default=False
-        Whether to re-reference EEG channels.
-    chan_limit : Optional[List[str]], default=None
-        List of EEG channels to retain.
-    montage_temp : str, default="standard_1005"
-        Montage template for channel locations.
-    is_montage : bool, default=False
-        Whether to apply a montage.
-    drop_chan : Iterable[str], default=()
-        List of channels to exclude.
-
-    Attributes
-    ----------
-    raw : Optional[mne.io.BaseRaw]
-        The loaded EEG raw data object.
-    hypno : Optional[pd.DataFrame]
-        DataFrame containing the hypnogram stages.
-    segments : Optional[List[Tuple[int, float, float]]]
-        List of tuples containing (stage, segment length, valid duration).
-    spindles : Optional[Any]
-        Detected spindles.
-    slow_oscillations : Optional[Any]
-        Detected slow oscillations.
-
-    Methods
-    -------
-    load_eeg()
-        Loads EEG data from the specified file.
-    load_hypnogram()
-        Loads and processes the hypnogram file.
-    segment_hypnogram()
-        Segments the hypnogram into epochs matching EEG data.
-    get_segments() -> List[Tuple[int, float, float]]
-        Returns a list of hypnogram segments.
-    get_raw() -> mne.io.BaseRaw
-        Returns the loaded raw EEG object.
-    get_hypnogram() -> pd.DataFrame
-        Returns the processed hypnogram DataFrame.
-    detect_spindles(...)
-        Detects sleep spindles using specified parameters.
-    detect_slow_oscillations(...)
-        Detects slow oscillations using specified parameters.
-    pac(...)
-        Computes phase-amplitude coupling (PAC) between spindles and slow oscillations.
-    detect_swa(...)
-        Computes slow-wave activity (SWA) in specific sleep stages.
-    """
+        Parameters
+        ----------
+        eeg_path : str
+            Path to the raw EEG file (supported extensions: .vhdr, .edf, .fif, .set, .bdf, .cnt).
+        hypnogram_path : str or None
+            Path to the hypnogram scoring file, if available.
+        hypnogram_type : str or None
+            Type of hypnogram file: 'RemLogic' or 'Hume'.
+        skip_header : bool
+            Whether to skip header lines in RemLogic files.
+        interval : int
+            Duration (s) of each hypnogram epoch.
+        bad_epoch : bool
+            Mark stage label 6 epochs as bad by annotation.
+        set_up_raw : bool
+            If True, apply channel dropping, re-referencing, and montage.
+        rerefer : bool
+            Re-reference EEG to mastoids (M1, M2) if True.
+        chan_limit : list or None
+            List of channel names to keep.
+        montage_temp : str
+            Standard montage template name.
+        is_montage : bool
+            If True, apply standard montage.
+        drop_chan : iterable
+            List of channels to drop in addition to physiological channels.
+        """
         self.slow_oscillations = None
         self.spindles = None
         self.eeg_path = eeg_path
@@ -115,7 +99,22 @@ class PolySomnoGraphy:
             self.load_hypnogram()
 
     def load_eeg(self) -> None:
-        """Load the raw EEG file based on its extension."""
+        """
+        Load raw EEG data based on file extension.
+
+        Supported formats:
+        - BrainVision (.vhdr)
+        - EDF (.edf)
+        - FIF (.fif)
+        - EEGLAB (.set)
+        - BDF (.bdf)
+        - CNT (.cnt)
+
+        Raises
+        ------
+        ValueError
+            If the file extension is unsupported or loading fails.
+        """
         if self.eeg_path.endswith('.vhdr'):
             self.raw = mne.io.read_raw_brainvision(self.eeg_path, preload=True, verbose='ERROR')
         elif self.eeg_path.endswith('.edf'):
@@ -133,10 +132,15 @@ class PolySomnoGraphy:
 
     def load_hypnogram(self) -> None:
         """
-        Load hypnogram data from the provided file using the specified hypnogram_type.
-        hypnogram_type must be either "RemLogic" or "Hume".
+        Load and process hypnogram scoring file into a DataFrame.
 
-        The loaded hypnogram data is stored internally as a pandas DataFrame with a 'stages' column.
+        Uses RemLogicDataLoader or HumeDataLoader based on hypnogram_type.
+        After loading, invokes segment_hypnogram() to generate segments.
+
+        Raises
+        ------
+        ValueError
+            If hypnogram_type is invalid.
         """
 
         if self.hypnogram_type.lower() == "remlogic":
@@ -155,10 +159,16 @@ class PolySomnoGraphy:
 
     def segment_hypnogram(self) -> None:
         """
-        Segment hypnogram data into intervals corresponding to sleep stages.
-        This method matches the hypnogram (self.hypno) to the raw EEG data (self.raw).
+        Convert hypnogram stages into contiguous stage segments.
 
-        It stores a list of tuples: (stage, segment length, valid duration) in self.segments.
+        Generates self.segments as a list of
+        (stage_label, segment_length_s, valid_duration_s).
+        Marks bad epochs as annotations if bad_epoch_flag is True.
+
+        Raises
+        ------
+        ValueError
+            If hypnogram data has not been loaded.
         """
         if self.hypno is None:
             raise ValueError("Hypnogram data not loaded.")
@@ -204,31 +214,71 @@ class PolySomnoGraphy:
         self.segments = stage_segments
 
     def get_segments(self) -> List[Tuple[int, float, float]]:
-        """Return the list of hypnogram segments."""
+        """
+        Return the list of hypnogram segments.
+
+        Returns
+        -------
+        List[Tuple[int, float, float]]
+            Each tuple is (stage_label, segment_length_s, valid_duration_s).
+        """
         if self.segments is None:
             raise ValueError("Segments have not been computed.")
         return self.segments
 
     def get_raw(self) -> mne.io.BaseRaw:
-        """Return the MNE Raw EEG object."""
+        """
+        Return the loaded raw EEG object.
+
+        Returns
+        -------
+        mne.io.BaseRaw
+            The MNE Raw object containing EEG data.
+
+        Raises
+        ------
+        ValueError
+            If EEG data has not been loaded.
+        """
         if self.raw is None:
             raise ValueError("EEG data not loaded.")
         return self.raw
 
     def get_hypnogram(self) -> pd.DataFrame:
-        """Return the hypnogram DataFrame with the 'stages' column."""
+        """
+        Return the processed hypnogram DataFrame.
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame with a 'stages' column of integer stage labels.
+
+        Raises
+        ------
+        ValueError
+            If hypnogram data has not been loaded.
+        """
         if self.hypno is None:
             raise ValueError("Hypnogram data not loaded.")
         return self.hypno
 
     def __good_epoch_dur(self, seg_start: float, seg_end: float, seg_len: float) -> float:
         """
-        Calculate the valid duration of an epoch, excluding bad segments.
+        Compute the valid duration of an epoch segment, excluding bad annotations.
+
+        Parameters
+        ----------
+        seg_start : float
+            Start time (s) of the segment.
+        seg_end : float
+            End time (s) of the segment.
+        seg_len : float
+            Nominal length (s) of the segment.
 
         Returns
         -------
         float
-            Valid duration of the epoch.
+            Duration (s) excluding any bad-epoch intervals.
         """
 
         bad_dur = sum(max(0.0, min(anno['onset'] + anno['duration'], seg_end) - max(anno['onset'], seg_start))
@@ -242,6 +292,22 @@ class PolySomnoGraphy:
                      montage_temp: str = "standard_1005",
                      is_montage: bool = False,
                      drop_chan=()):
+        """
+        Preprocess raw EEG by dropping non-EEG channels, re-referencing, and applying montage.
+
+        Parameters
+        ----------
+        rerefer : bool
+            If True, set EEG reference to mastoid channels ['M1','M2'].
+        chan_limit : list or None
+            List of channel names to retain; others are dropped.
+        montage_temp : str
+            Name of the standard montage to apply.
+        is_montage : bool
+            If True, apply a standard montage to channel locations.
+        drop_chan : iterable
+            Additional channel names to drop.
+        """
         ch_drop = [
             ch for ch in self.raw.ch_names
             if ch.startswith('M') or 'EMG' in ch or 'EOG' in ch or 'ECG' in ch or 'chin' in ch.lower() or ch.startswith(
@@ -270,6 +336,33 @@ class PolySomnoGraphy:
                         dur_upper: float = math.inf,
                         baseline: bool = True,
                         verbose: bool = True):
+        
+        """
+        Detect sleep spindles in specified sleep stages.
+
+        Wraps SP_detection from somnopy.event_detection.
+
+        Parameters
+        ----------
+        target_stage : iterable
+            Sleep stages to analyze (e.g. ['N2','SWS']).
+        method : str
+            Spindle detection method name. Options:
+            'Hahn2020','Martin2013','Wamsley2012','Wendt2012','Ferrarelli2007'.
+        l_freq, h_freq : float
+            Bandpass filter limits (Hz).
+        dur_lower, dur_upper : float
+            Minimum and maximum spindle duration (s).
+        baseline : bool
+            If True, subtract mean from each channel prior to detection.
+        verbose : bool
+            If True, print detection summary.
+
+        Returns
+        -------
+        tuple
+            (raw_copy, sp_event_df, sp_summary_df)
+        """
 
         self.spindles = SP_detection(self.raw, self.segments,
                                      target_stage=target_stage,
@@ -290,6 +383,34 @@ class PolySomnoGraphy:
                                  filter_type: str = 'fir',
                                  method: str = 'Staresina',
                                  verbose: bool = True):
+        
+        """
+        Detect slow oscillations (SOs) in specified sleep stages.
+
+        Wraps SO_detection from somnopy.event_detection.
+
+        Parameters
+        ----------
+        target_stage : iterable
+            Sleep stages to analyze (e.g. ['N2','SWS']).
+        filter_freq : tuple or None
+            Bandpass filter bounds (l_freq, h_freq) or None for default.
+        duration : tuple or None
+            Event duration bounds (dur_lower, dur_upper) or None for default.
+        baseline : bool
+            If True, subtract mean before detection.
+        filter_type : str
+            'fir' or 'iir'.
+        method : str
+            SO detection method name.
+        verbose : bool
+            If True, print detection summary.
+
+        Returns
+        -------
+        tuple
+            (raw_copy, so_event_df, so_summary_df)
+        """
 
         self.slow_oscillations = SO_detection(self.raw, self.segments,
                                               target_stage=target_stage,
@@ -302,6 +423,25 @@ class PolySomnoGraphy:
         return self.slow_oscillations
 
     def pac(self, verbose: bool = True, file_name: str = "Participant"):
+        """
+        Compute event-locked PAC between SO troughs and spindles.
+
+        Merges SO and SP summaries, finds coupled events via event_lock,
+        then computes PAC metrics and optionally plots PETH+PAC.
+
+        Parameters
+        ----------
+        verbose : bool
+            If True, print per-stage PAC stats and show plots.
+        file_name : str
+            Identifier to prepend to subject column in results.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Merged event summary including PAC metrics and coupling density.
+        """
+
         if self.spindles is None or self.slow_oscillations is None:
             raise Warning("Attempting to run before detect_spindles or detect_slow_oscillations")
         event_summary = pd.merge(self.slow_oscillations[2], self.spindles[2], on=['stage', 'channel'], how='outer')
@@ -312,6 +452,25 @@ class PolySomnoGraphy:
         return self.pac
 
     def detect_swa(self, stages=None, file_name='id', l_freq=0.5, h_freq=4):
+        """
+        Compute slow-wave activity (SWA) per channel.
+
+        Wraps detect_swa from somnopy.event_detection.
+
+        Parameters
+        ----------
+        stages : list or None
+            Sleep stages to include in SWA computation.
+        file_name : str
+            Participant identifier for output DataFrame.
+        l_freq, h_freq : float
+            Delta band limits (Hz).
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame with SWA value per channel.
+        """
         self.swa = detect_swa(self.raw, stages=stages, psg=self.segments, file_name=file_name, l_freq=l_freq,
                               h_freq=h_freq)
         return self.swa

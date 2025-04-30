@@ -4,10 +4,34 @@ from scipy.io import loadmat
 
 
 class HumeDataLoader:
+    """
+    Loader for hypnogram stage data stored in MATLAB (.mat) files.
+
+    This class reads a .mat file containing a nested 'stageData' structure,
+    extracts and concatenates sleep stage annotations, applies remapping
+    rules, and exposes the result as a pandas DataFrame or NumPy array.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the .mat file containing the hypnogram. The file must
+        include a 'stageData' field with a nested 'stages' array.
+
+    Attributes
+    ----------
+    filepath : str
+        The path provided at initialization.
+    df : pandas.DataFrame or None
+        DataFrame of processed stage values under the column 'stages'.
+    """
     def __init__(self, filepath):
         """
-        Parameters:
-            filepath (str): Path to the MAT file containing hypnogram data.
+        Initialize the loader and immediately load the file.
+
+        Parameters
+        ----------
+        filepath : str
+            Path to the MAT file containing hypnogram data.
         """
         self.filepath = filepath
         self.df = None  # This will hold a pandas DataFrame.
@@ -15,16 +39,23 @@ class HumeDataLoader:
 
     def load_file(self):
         """
-        Loads the hypnogram data from a MAT file.
+        Load and process hypnogram stages from the MAT file.
 
-        The file is expected to have a field 'stageData' containing 'stages'.
-        The stages are concatenated from nested arrays, then processed:
-          - Any stage value equal to 5 is replaced with '4'.
-          - Any stage value equal to 7 is replaced with '0'.
-          - The last stage is set to 0.
-          - All values are cast to int.
+        The method:
+          1. Loads the .mat contents.
+          2. Extracts the nested 'stageData' → 'stages' array.
+          3. Concatenates all subarrays into one flat 1D array.
+          4. Remaps:
+             - All values == 5 → 4
+             - All values == 7 → 0
+          5. Forces the last element to 0.
+          6. Casts the entire series to integer.
+          7. Stores the result in `self.df` with a single column 'stages'.
 
-        The processed stages are stored in a pandas DataFrame.
+        Raises
+        ------
+        KeyError
+            If 'stageData' or 'stages' are missing in the .mat file.
         """
         # Load the MAT file.
         scoring = loadmat(self.filepath)
@@ -49,7 +80,11 @@ class HumeDataLoader:
 
     def get_data(self):
         """
-        Returns:
-            numpy.ndarray: Flattened array of hypnogram stage values.
+        Retrieve the processed hypnogram stages as a NumPy array.
+
+        Returns
+        -------
+        numpy.ndarray
+            Flattened array of integer stage values, length == number of epochs.
         """
         return self.df['stages'].values.flatten()
