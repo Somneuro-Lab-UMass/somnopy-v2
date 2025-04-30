@@ -3,13 +3,45 @@ import pandas as pd
 
 
 class RemLogicDataLoader:
+    """
+    Loader for REMLogic hypnogram text files.
+
+    Reads a REMLogic-generated text file with sleep stage annotations, parses
+    each row to extract sleep stage, timestamp, event description, duration,
+    and location, and provides the stages sequence as a DataFrame.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the REMLogic text file to parse.
+    skip_header : bool, default=False
+        If True, finds the last line containing 'Sleep Stage' and skips all
+        lines up to and including that header. Otherwise, no header skipping.
+
+    Attributes
+    ----------
+    filepath : str
+        Input file path.
+    skip_header : bool
+        Header skipping flag.
+    df : pandas.DataFrame
+        DataFrame of parsed rows with columns:
+          - 'sleep_stage' : int (0-5 or -1 for unknown)
+          - 'time'        : float, seconds since midnight
+          - 'event'       : str, event description text
+          - 'duration'    : float, event duration (s)
+          - 'location'    : str, event location label
+    """
     def __init__(self, filepath: str, skip_header: bool = False) -> None:
         """
-        Parameters:
-            filepath (str): Path to the REMlogic text file.
-            skip_header (bool): If True, search for the last line containing
-                'Sleep Stage' and skip up to and including that line.
-                If False, no header skipping is performed.
+        Initialize loader and parse the file immediately.
+
+        Parameters
+        ----------
+        filepath : str
+            Path to the REMLogic text file.
+        skip_header : bool, default=False
+            If True, skip header lines up to the last 'Sleep Stage' occurrence.
         """
         self.filepath: str = filepath
         self.skip_header: bool = skip_header
@@ -18,8 +50,17 @@ class RemLogicDataLoader:
 
     def parse_sleep_stage(self, stage_str: str) -> int:
         """
-        Convert the sleep stage (the first token of the row) to an integer in 0–5 format.
-        If stage_str is numeric, return the integer; otherwise, map known labels.
+        Convert a sleep-stage token to an integer label (0-5).
+
+        Parameters
+        ----------
+        stage_str : str
+            Sleep stage string (e.g., 'N2', 'REM', 'W', or numeric text).
+
+        Returns
+        -------
+        int
+            Stage code: 0=Wake, 1=N1, 2=N2, 3=N3, 4=N4, 5=REM, -1=unknown.
         """
         stage_str = stage_str.strip()
         try:
@@ -32,8 +73,19 @@ class RemLogicDataLoader:
 
     def find_time_index(self, tokens: list) -> int:
         """
-        Finds the index of the time column by looking for the first occurrence of HH:MM:SS or HH:MM:SS.xxx.
-        Any column before this is considered part of the position column and is ignored.
+        Identify the index of the time column in a list of tokens.
+
+        Scans for the first token containing ':' and at least two ':'-separated parts.
+
+        Parameters
+        ----------
+        tokens : list of str
+            Split tokens from a line.
+
+        Returns
+        -------
+        int
+            Index of time token, or -1 if not found.
         """
         for i, token in enumerate(tokens):
             if ":" in token and len(token.split(":")) >= 2:
@@ -42,11 +94,21 @@ class RemLogicDataLoader:
 
     def parse_time(self, tokens: list, time_index: int) -> (float, int):
         """
-        Parse time starting from the detected time_index.
+        Parse a time token (and optional AM/PM) to seconds since midnight.
 
-        Returns:
-            total_seconds (float): Time in seconds from midnight.
-            token_index_after_time (int): Index of the next token after time.
+        Parameters
+        ----------
+        tokens : list of str
+            Tokens containing time and possibly an AM/PM indicator.
+        time_index : int
+            Index where the time string appears.
+
+        Returns
+        -------
+        total_seconds : float
+            Time converted to seconds from midnight.
+        next_index : int
+            Token index immediately after the time (and AM/PM) tokens.
         """
         time_str = tokens[time_index]
         token_index_after_time = time_index + 1
@@ -83,9 +145,18 @@ class RemLogicDataLoader:
 
     def load_file(self) -> None:
         """
-        Reads the file, optionally skipping headers, and parses rows.
-        Dynamically removes position columns and ensures data integrity.
-        Stores parsed data in a pandas DataFrame.
+        Read and parse the REMLogic text file.
+
+        Steps:
+          1. Read all lines, skip headers if requested.
+          2. For each nonblank line:
+             a. Split into tokens and ensure at least four tokens.
+             b. Find and isolate the time column, remove position tokens.
+             c. Extract sleep stage token, parse it to int.
+             d. Parse time to seconds, extract duration and location.
+             e. Concatenate remaining tokens as event text.
+             f. Only keep rows where sleep-stage token appears in event text.
+          3. Store valid rows in `self.df` DataFrame.
         """
         with open(self.filepath, 'r', encoding='utf-8') as f:
             lines = f.readlines()
@@ -171,8 +242,14 @@ class RemLogicDataLoader:
 
     def get_data(self) -> pd.DataFrame:
         """
-        Returns a pandas DataFrame with only the 'stages' column.
-        Before returning, remaps Sleep Stage values (5 → 4, 7 → 0).
+        Return hypnogram stages as a DataFrame with a 'stages' column.
+
+        Remaps stage codes: 5→4, 7→0 for compatibility.
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame with single column 'stages'.
         """
         df_stages = self.df[['sleep_stage']].copy()
         df_stages.rename(columns={'sleep_stage': 'stages'}, inplace=True)

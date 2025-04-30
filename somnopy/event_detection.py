@@ -826,12 +826,46 @@ def detect_swa(raw: Raw, stages=None, psg=None, file_name='id', l_freq=0.5, h_fr
 
 
 def __detect_spindles_for_epoch(method, signal_1d, sfreq, l_freq, h_freq, dur_lower, dur_upper):
-    # 7. Define helper function to detect spindles from a single epoch signal
-    #    according to the chosen method
     """
-    Detect spindle events in one single-epoch, single-channel signal
-    using the specified 'method'.
-    Returns a list of dictionaries (one per spindle event).
+    Detect spindle events in a single‐epoch, single‐channel EEG signal.
+
+    Parameters
+    ----------
+    method : str
+        Name of the spindle detection algorithm to apply. Must be one of:
+        {"Hahn2020", "Martin2013", "Wamsley2012", "Wendt2012", "Ferrarelli2007"}.
+    signal_1d : array-like, shape (n_times,)
+        1D EEG time‐series for one epoch and one channel.
+    sfreq : float
+        Sampling frequency of `signal_1d` in Hz.
+    l_freq : float
+        Lower bound of the bandpass filter (Hz) used by the method.
+    h_freq : float
+        Upper bound of the bandpass filter (Hz) used by the method.
+    dur_lower : float
+        Minimum spindle duration (seconds) to accept.
+    dur_upper : float
+        Maximum spindle duration (seconds) to accept.
+
+    Returns
+    -------
+    spindle_candidates : list of dict
+        Each dict describes one detected spindle, with keys:
+        - 'start_idx' : int
+            Sample index where the spindle begins.
+        - 'end_idx' : int
+            Sample index where the spindle ends.
+        - 'peak_idx' : int
+            Sample index of the maximum amplitude within the spindle.
+        - 'duration' : float
+            Duration of the spindle in seconds.
+        - 'amplitude' : float
+            Peak amplitude of the spindle envelope.
+
+    Raises
+    ------
+    RuntimeError
+        If `method` is not one of the supported algorithm names.
     """
 
     if method == "Hahn2020":
@@ -856,10 +890,48 @@ def __detect_spindles_for_epoch(method, signal_1d, sfreq, l_freq, h_freq, dur_lo
 
 
 def __ferrarelli(sfreq, signal_1d, l_freq, h_freq, dur_lower, dur_upper):
-    # (Ferrarelli 2007)
-    # 12–15 Hz bandpass (already done), rectify signal -> amplitude time series.
-    # Upper threshold = 8 × mean amplitude => potential spindle region starts there.
-    # Then continues until amplitude < lower threshold = 2 × mean amplitude.
+    """
+    Detect sleep spindles using the Ferrarelli et al. (2007) amplitude‐threshold method.
+
+    Parameters
+    ----------
+    sfreq : float
+        Sampling frequency of the EEG signal (Hz).
+    signal_1d : array‐like, shape (n_times,)
+        1D EEG time‐series for one epoch and one channel (already band-pass filtered).
+    l_freq : float
+        Lower edge of the spindle band (Hz). Included for API consistency; not used here.
+    h_freq : float
+        Upper edge of the spindle band (Hz). Included for API consistency; not used here.
+    dur_lower : float
+        Minimum duration threshold (s): spindles shorter than this are discarded.
+    dur_upper : float
+        Maximum duration threshold (s): spindles longer than this are discarded (not enforced here).
+
+    Returns
+    -------
+    spindle_candidates : list of dict
+        Detected spindle events, each with keys:
+        - 'start_idx' : int  
+            Sample index where the spindle begins (when rectified amplitude first exceeds  
+            8× the mean).  
+        - 'end_idx' : int  
+            Sample index where the spindle ends (when amplitude falls below  
+            2× the mean).  
+        - 'peak_idx' : int  
+            Sample index of the highest rectified amplitude within the spindle.  
+        - 'duration' : float  
+            Duration of the spindle in seconds.  
+        - 'amplitude' : float  
+            Peak rectified amplitude of the spindle.
+
+    Notes
+    -----
+    - Rectifies the input signal to obtain an amplitude envelope.
+    - Uses an upper threshold of 8× the mean amplitude to mark spindle onset
+      and a lower threshold of 2× the mean to mark offset.
+    - Only events longer than `dur_lower` are returned.
+    """
     spindle_candidates = []
 
     rectified = np.abs(signal_1d)
@@ -926,21 +998,46 @@ def __wendt(sfreq, signal_1d, l_freq, h_freq, dur_lower, dur_upper):
 
 
 def __wamsley(sfreq, signal_1d, l_freq, h_freq, dur_lower, dur_upper):
-    # (Wamsley 2012)
-    # Discrete sleep spindle events automatically detected via a wavelet-based algorithm
-    # covering ~10-16 Hz. For thresholding, the rectified moving average (100 ms window)
-    # of the wavelet scale is used. A spindle is identified if the signal
-    # exceeds 4.5 * mean amplitude for >= 400 ms.
-    #
-    # Implementation note:
-    # We'll use MNE's Morlet wavelet transform for the relevant frequencies (10-16 Hz),
-    # combine power or amplitude across that band, rectify, and smooth with 100 ms.
-    #
-    # 1. Create a short "dummy" RawArray for wavelet analysis. Or we can do TFR in a direct manner.
-    # 2. We'll compute time-frequency representation, sum (or average) power in 10-16 Hz range.
-    # 3. Rectify => take the absolute value (or it's already power). Then a 100 ms moving average.
-    # 4. threshold = 4.5 * mean
-    # 5. events must last >= 0.4 s.
+    """
+    Detect sleep spindles using the Wamsley et al. (2012) wavelet-based method.
+
+    Parameters
+    ----------
+    sfreq : float
+        Sampling frequency of the EEG signal in Hz.
+    signal_1d : array-like, shape (n_times,)
+        1D EEG time-series for one epoch and one channel (should be band-pass filtered).
+    l_freq : float
+        Lower edge of the spindle frequency band (Hz). Used to build the wavelet frequency array.
+    h_freq : float
+        Upper edge of the spindle frequency band (Hz). Used to build the wavelet frequency array.
+    dur_lower : float
+        Minimum duration threshold (s) for a valid spindle event.
+    dur_upper : float
+        Maximum duration threshold (s) for a valid spindle event.
+
+    Returns
+    -------
+    spindle_candidates : list of dict
+        Each dict describes one detected spindle, with keys:
+        - 'start_idx' : int  
+            Sample index where the spindle begins (first sample above threshold).  
+        - 'end_idx' : int  
+            Sample index where the spindle ends (first sample below threshold).  
+        - 'peak_idx' : int  
+            Sample index of maximum power/envelope within the spindle.  
+        - 'duration' : float  
+            Duration of the spindle in seconds.  
+        - 'amplitude' : float  
+            Peak smoothed power (amplitude) of the spindle.
+
+    Notes
+    -----
+    - Computes a time–frequency representation via Morlet wavelets over freqs = l_freq…h_freq.  
+    - A 100 ms moving average smooths the mean power across frequencies.  
+    - Threshold is set at 4.5× the mean smoothed power.  
+    - Only events whose duration lies between dur_lower and dur_upper are returned.
+    """
     spindle_candidates = []
     # We'll shape the data into (n_epochs=1, n_channels=1, n_times) for mne tfr_morlet:
     signal_2d = signal_1d[np.newaxis, np.newaxis, :]
@@ -991,9 +1088,45 @@ def __wamsley(sfreq, signal_1d, l_freq, h_freq, dur_lower, dur_upper):
 
 
 def __martin(sfreq, signal_1d, l_freq, h_freq, dur_lower, dur_upper):
-    # (Martin et al. 2013, referencing Schabus et al. 2007)
-    # 11-15 Hz bandpass (already done).
-    # Then, compute RMS using a 0.25-s window, threshold at 95th percentile.
+    """
+    Detect sleep spindles using the Martin et al. (2013) RMS‐threshold method.
+
+    Parameters
+    ----------
+    sfreq : float
+        Sampling frequency of the EEG signal in Hz.
+    signal_1d : array‐like, shape (n_times,)
+        1D EEG time‐series for one epoch and one channel (already band-pass filtered).
+    l_freq : float
+        Lower band edge of the spindle band (Hz). Included for API consistency; not used here.
+    h_freq : float
+        Upper band edge of the spindle band (Hz). Included for API consistency; not used here.
+    dur_lower : float
+        Minimum duration (seconds) for a valid spindle event.
+    dur_upper : float
+        Maximum duration (seconds) for a valid spindle event.
+
+    Returns
+    -------
+    spindle_candidates : list of dict
+        List of detected spindles. Each dict contains:
+        - 'start_idx' : int  
+            Index of the first sample above the RMS threshold.  
+        - 'end_idx' : int  
+            Index of the first sample below the threshold after onset.  
+        - 'peak_idx' : int  
+            Index of the maximum RMS value within the spindle.  
+        - 'duration' : float  
+            Duration of the spindle in seconds.  
+        - 'amplitude' : float  
+            Peak RMS amplitude of the spindle.
+
+    Notes
+    -----
+    - Computes the RMS envelope over a 0.25-s sliding window.  
+    - Threshold is set at the 95th percentile of the RMS envelope.  
+    - Only segments with duration between `dur_lower` and `dur_upper` are returned.
+    """
     spindle_candidates = []
     window_samples = int(0.25 * sfreq)
     squared_signal = signal_1d ** 2
@@ -1030,9 +1163,47 @@ def __martin(sfreq, signal_1d, l_freq, h_freq, dur_lower, dur_upper):
 
 
 def __hahn(sfreq, signal_1d, l_freq, h_freq, dur_lower, dur_upper):
-    # (Hahn et al. 2020)
-    # Hilbert transform -> extract amplitude envelope thresholded at a chosen percentile
-    # default percentile=75, duration 0.5-3 s
+    """
+    Detect sleep spindles using the Hahn et al. (2020) Hilbert‐transform envelope method.
+
+    Parameters
+    ----------
+    sfreq : float
+        Sampling frequency of the EEG signal in Hz.
+    signal_1d : array‐like, shape (n_times,)
+        1D EEG time‐series for one epoch and one channel (already band‐pass filtered).
+    l_freq : float
+        Lower edge of the spindle band (Hz). Included for API consistency; not used here.
+    h_freq : float
+        Upper edge of the spindle band (Hz). Included for API consistency; not used here.
+    dur_lower : float
+        Minimum duration (s) for a valid spindle event.
+    dur_upper : float
+        Maximum duration (s) for a valid spindle event.
+
+    Returns
+    -------
+    spindle_candidates : list of dict
+        Each dict describes one detected spindle, with keys:
+        - 'start_idx' : int  
+            Index where the envelope first exceeds the amplitude threshold.  
+        - 'end_idx' : int  
+            Index where the envelope falls back below the threshold.  
+        - 'peak_idx' : int  
+            Index of the maximum smoothed envelope within the spindle.  
+        - 'duration' : float  
+            Duration of the event in seconds.  
+        - 'amplitude' : float  
+            Peak smoothed envelope amplitude.
+
+    Notes
+    -----
+    - Applies the Hilbert transform to extract an amplitude envelope.  
+    - Smooths the envelope with a 200 ms moving average.  
+    - Uses the 75th percentile of the smoothed envelope as threshold.  
+    - Requires at least two consecutive above‐threshold samples.  
+    - Only events whose duration lies between `dur_lower` and `dur_upper` are returned.
+    """
     spindle_candidates = []
     analytic_signal = hilbert(signal_1d)
     amplitude_envelope = np.abs(analytic_signal)
