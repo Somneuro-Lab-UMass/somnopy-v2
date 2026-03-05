@@ -21,6 +21,10 @@ Ensure you have Python installed. Then, install dependencies using:
 pip install -r requirements.txt
 ```
 
+#toml not requirements.txt
+#no need for install, just run the first cell in SPSO_Coupling_Notebook.ipynb
+#code is not up to date. This is 0.0.9, we are on v 0.0.10
+
 ## Usage
 
 ### 1️⃣ Load EEG & Hypnogram Data

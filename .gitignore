@@ -73,6 +73,7 @@ docs/_build/
 
 # private data
 data/
+output/
 
 # PyBuilder
 .pybuilder/
