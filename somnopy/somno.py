@@ -20,7 +20,7 @@ def get_sosp(psg: PolySomnoGraphy, file_name, interest_stage=('N2', 'SWS'),
              so_method='Staresina', coupling=False,
              filter_freq=None, duration=None, filter_type: str = 'fir', l_freq: float = None,
              h_freq: float = None, dur_lower: float = None, dur_upper: float = None,
-             baseline: bool = True, verbose: bool = True):
+             baseline: bool = True, verbose: bool = True, outpath = None):
     """
         Detect slow oscillations (SOs) and sleep spindles (SPs) in a given EEG recording.
 
@@ -90,7 +90,7 @@ def get_sosp_for_folder(raw_folder: str, stage_folder: str, interest_stage=('N2'
                         montage_temp="standard_1005", is_montage=True,
                         filter_freq=None, duration=None, filter_type: str = 'fir', l_freq: float = None,
                         h_freq: float = None, dur_lower: float = 0.5, dur_upper: float = math.inf,
-                        baseline: bool = True, verbose: bool = True, bad_epoch=True):
+                        baseline: bool = True, verbose: bool = True, bad_epoch=True, outpath=None):
     """
         Detect SOs and SPs for all EEG recordings in a folder.
 

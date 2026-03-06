@@ -888,7 +888,7 @@ def pac_grp(raw, cp_event_grp, event_summary_grp, SO_waveform, stage='all', chan
         plt.show()
 
 
-def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, verbose=True):
+def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, verbose=True, outpath = None):
     """
     Identify spindles occurring within ±1.5 s of each detected SO trough.
 
@@ -1001,6 +1001,9 @@ def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, ver
         plt.colorbar(im, ax=ax, format="%.0f%%")
         ax.set_title('Spindles Coupled with SOs (%)')
         plt.show()
+        
+        if outpath is not None:
+            fig.savefig(str(outpath / "spso_coupling.png"))
 
     return filtered[['ch_name', 'stage', 'trough_time', 'peak_time', 'amplitude', 'Time_diff']].rename(
         columns={'trough_time': 'SO_trough_time', 'peak_time': 'SP_peak_time',
