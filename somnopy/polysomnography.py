@@ -14,7 +14,6 @@ class PolySomnoGraphy:
                  eeg_path: str,
                  hypnogram_path: Optional[str] = None,
                  hypnogram_type: Optional[str] = None,
-                 outpath: Optional[str] = None,
                  skip_header: bool = True,
                  interval: int = 30,
                  bad_epoch: bool = True,
@@ -100,7 +99,6 @@ class PolySomnoGraphy:
         self.eeg_path = eeg_path
         self.hypnogram_path = hypnogram_path
         self.hypnogram_type = hypnogram_type
-        self.outpath = outpath
         self.skip_header = skip_header
         self.interval = interval
         self.bad_epoch_flag = bad_epoch
@@ -303,14 +301,14 @@ class PolySomnoGraphy:
                                               verbose=verbose)
         return self.slow_oscillations
 
-    def pac(self, verbose: bool = True, file_name: str = "Participant"):
+    def pac(self, verbose: bool = True, file_name: str = "Participant", outpath=None):
         if self.spindles is None or self.slow_oscillations is None:
             raise Warning("Attempting to run before detect_spindles or detect_slow_oscillations")
         event_summary = pd.merge(self.slow_oscillations[2], self.spindles[2], on=['stage', 'channel'], how='outer')
-        cp_event, event_summary, fig = event_lock(self.raw, self.slow_oscillations[1],
-                                             self.spindles[1], event_summary, verbose=verbose, outpath=outpath)
+        cp_event, event_summary = event_lock(self.raw, self.slow_oscillations[1],
+                                             self.spindles[1], event_summary, verbose=verbose, outpath=outpath, file_name=file_name)
         cp_event.insert(0, 'subject', file_name)
-        self.pac = pac(self.raw, cp_event, event_summary, verbose=verbose)
+        self.pac = pac(self.raw, cp_event, event_summary, verbose=verbose, outpath=outpath, file_name=file_name)
         return self.pac
 
     def detect_swa(self, stages=None, file_name='id', l_freq=0.5, h_freq=4):

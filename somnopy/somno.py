@@ -79,7 +79,7 @@ def get_sosp(psg: PolySomnoGraphy, file_name, interest_stage=('N2', 'SWS'),
     so_waveform = None
 
     if coupling:
-        event_summary, so_waveform = psg.pac(verbose=verbose, file_name=file_name)
+        event_summary, so_waveform = psg.pac(verbose=verbose, file_name=file_name, outpath=outpath)
     return event_summary, cp_event, so_waveform
 
 
@@ -189,7 +189,7 @@ def get_sosp_for_folder(raw_folder: str, stage_folder: str, interest_stage=('N2'
                                                                   filter_type=filter_type, l_freq=l_freq,
                                                                   h_freq=h_freq, dur_lower=dur_lower,
                                                                   dur_upper=dur_upper,
-                                                                  baseline=baseline, verbose=verbose)
+                                                                  baseline=baseline, verbose=verbose, outpath=outpath)
 
             event_summary_all[file_name] = event_summary
             coupling_event_all[file_name] = coupling_event

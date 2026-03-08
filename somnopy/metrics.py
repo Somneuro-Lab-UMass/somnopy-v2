@@ -405,7 +405,7 @@ def compute_pac_metrics(events, raw, window_size, eeg_data_dict, n_bins, sfreq, 
     }
 
 
-def pac(raw, coupled_events, event_summary, verbose=True):
+def pac(raw, coupled_events, event_summary, verbose=True, outpath=None, file_name="Participant"):
     """
     Compute Peri-Event Time Histogram (PETH) and Phase-Amplitude Coupling (PAC)
     between SO and spindle events in a single function.
@@ -677,6 +677,9 @@ def pac(raw, coupled_events, event_summary, verbose=True):
 
         plt.tight_layout()
         plt.show()
+        if outpath is not None:
+            fig.savefig(str(outpath / f"{file_name}_peth_and_polar_plots.png"))
+
 
     waveform_df = pd.DataFrame(SO_waveform)
     return event_summary, waveform_df
@@ -888,7 +891,7 @@ def pac_grp(raw, cp_event_grp, event_summary_grp, SO_waveform, stage='all', chan
         plt.show()
 
 
-def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, verbose=True, outpath = None):
+def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, verbose=True, outpath=None, file_name = "Participant"):
     """
     Identify spindles occurring within ±1.5 s of each detected SO trough.
 
@@ -1003,7 +1006,7 @@ def event_lock(raw, SO_candidates, SP_candidates, event_summary, window=1.5, ver
         plt.show()
         
         if outpath is not None:
-            fig.savefig(str(outpath / "spso_coupling.png"))
+            fig.savefig(str(outpath / f"{file_name}_spso_coupling.png"))
 
     return filtered[['ch_name', 'stage', 'trough_time', 'peak_time', 'amplitude', 'Time_diff']].rename(
         columns={'trough_time': 'SO_trough_time', 'peak_time': 'SP_peak_time',
