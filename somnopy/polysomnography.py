@@ -312,6 +312,6 @@ class PolySomnoGraphy:
         return self.pac
 
     def detect_swa(self, stages=None, file_name='id', l_freq=0.5, h_freq=4):
-        self.swa = detect_swa(self.raw, stages=stages, psg=self.segments, file_name=file_name, l_freq=l_freq,
+        self.swa = detect_swa(self.raw, self.segments, target_stage=stages, l_freq=l_freq,
                               h_freq=h_freq)
         return self.swa

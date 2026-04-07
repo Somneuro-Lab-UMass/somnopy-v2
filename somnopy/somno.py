@@ -17,7 +17,7 @@ from somnopy.polysomnography import PolySomnoGraphy
 
 def get_sosp(psg: PolySomnoGraphy, file_name, interest_stage=('N2', 'SWS'),
              sp_method='Hahn2020',
-             so_method='Staresina', coupling=False,
+             so_method='Staresina', coupling=False, swa=False,
              filter_freq=None, duration=None, filter_type: str = 'fir', l_freq: float = None,
              h_freq: float = None, dur_lower: float = None, dur_upper: float = None,
              baseline: bool = True, verbose: bool = True, outpath = None):
@@ -73,19 +73,28 @@ def get_sosp(psg: PolySomnoGraphy, file_name, interest_stage=('N2', 'SWS'),
     _, sp_candidate, sp_summary = psg.detect_spindles(target_stage=interest_stage, method=sp_method,
                                                       l_freq=l_freq, h_freq=h_freq, dur_lower=dur_lower,
                                                       dur_upper=dur_upper, baseline=baseline, verbose=verbose)
-    event_summary = pd.merge(so_summary, sp_summary, on=['stage'], how='outer')
 
+    event_summary = pd.merge(so_summary, sp_summary, on=['stage'], how='outer')
     cp_event = None
     so_waveform = None
 
     if coupling:
         event_summary, so_waveform = psg.pac(verbose=verbose, file_name=file_name, outpath=outpath)
+
+    if swa: 
+        _, swa_summary = psg.detect_swa(stages=interest_stage)
+        swa_summary = (
+        swa_summary.rename(columns={"Stage": "stage", "SWA": "swa", "Channel": "channel"}))
+        event_summary = pd.merge(event_summary, swa_summary, on=['stage', 'channel'], how='outer')
+
+
+
     return event_summary, cp_event, so_waveform
 
 
 def get_sosp_for_folder(raw_folder: str, stage_folder: str, interest_stage=('N2', 'SWS'),
                         sp_method='Hahn2020',
-                        so_method='Staresina', coupling=True, scoring_dur=30, rerefer=False, chan_limit=None,
+                        so_method='Staresina', coupling=True, swa=False, scoring_dur=30, rerefer=False, chan_limit=None,
                         ch_drop=(), skip_header=True, skip_footer=0,
                         montage_temp="standard_1005", is_montage=True,
                         filter_freq=None, duration=None, filter_type: str = 'fir', l_freq: float = None,
@@ -184,7 +193,7 @@ def get_sosp_for_folder(raw_folder: str, stage_folder: str, interest_stage=('N2'
 
             event_summary, coupling_event, so_waveform = get_sosp(psg, file_name,
                                                                   interest_stage=interest_stage, sp_method=sp_method,
-                                                                  so_method=so_method, coupling=coupling,
+                                                                  so_method=so_method, coupling=coupling, swa=swa,
                                                                   filter_freq=filter_freq, duration=duration,
                                                                   filter_type=filter_type, l_freq=l_freq,
                                                                   h_freq=h_freq, dur_lower=dur_lower,

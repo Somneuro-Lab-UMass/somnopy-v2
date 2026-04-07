@@ -743,86 +743,161 @@ def SP_detection(raw: Raw, stage, target_stage=('N2', 'SWS'), method: str = "Hah
     return raw_copy, final_SP_candidates, SP_summary_df
 
 
-def detect_swa(raw: Raw, stages=None, psg=None, file_name='id', l_freq=0.5, h_freq=4):
+def detect_swa(raw: Raw, stage, target_stage=('N2', 'SWS'),
+               l_freq=0.5, h_freq=4, baseline=True, verbose=True):
     """
-    Compute slow wave activity (SWA) from an mne.Raw object, optionally filtering
-    the analysis to only include data from specified sleep stages.
+    Compute slow wave activity (SWA) per channel and per sleep stage.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     raw : mne.io.Raw
-        The raw EEG/MEG data.
-    stages : list of str, optional
-        A list of stage descriptions (e.g., ['N2', 'N3']) to include in the analysis.
-        Only segments with annotations whose description matches an entry in this list
-        will be used for computing SWA. If None, the entire recording is used.
-    file_name : str, default='id'
-        Identifier for the subject.
-    l_freq : float, default=0.5
-        Lower bound of the slow-wave frequency band.
-    h_freq : float, default=4
-        Upper bound of the slow-wave frequency band.
+        MNE Raw object containing EEG data.
+    stage : list of tuples
+        A list describing sleep stage segments, e.g. [(stage_value, dur_sec, label), ...].
+        The function accumulates these durations in order to determine
+        the time boundaries for each stage segment.
+    target_stage : list or tuple
+        List of stage values or stage names (e.g. ('N2', 'SWS') or (2, 3))
+        on which SWA will be computed.
+    l_freq : float
+        Low cutoff frequency for SWA bandpass filter.
+    h_freq : float
+        High cutoff frequency for SWA bandpass filter.
+    baseline : bool
+        Whether to subtract each channel mean before computing SWA.
+    verbose : bool
+        Whether to print summary information.
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame containing SWA measurements per channel.
+    raw_copy : mne.io.Raw
+        Filtered copy of raw containing EEG data used for SWA.
+    swa_summary_df : pd.DataFrame
+        DataFrame with columns ['stage', 'channel', 'swa'].
+        Includes per-stage per-channel rows and 'all' rows.
     """
-    # Sampling frequency
-    fs = raw.info['sfreq']
-    print('fs: ', fs)
-    # Channel names
-    ch_names = raw.info['ch_names']
-    # Get the data as a numpy array (shape: n_channels x n_times)
-    data = raw.get_data()
+    raw_copy = raw.copy()
+    sfreq = raw_copy.info['sfreq']
 
     stage_mapping = {"Wake": 0, "N1": 1, "N2": 2, "SWS": 3, "REM": 4}
+    target_stage = [
+        stage_mapping[stg] if isinstance(stg, str) and stg in stage_mapping else stg
+        for stg in target_stage
+    ]
 
-    if stages is not None and psg is not None:
-        print(psg)
-        target_stage = [
-            stage_mapping[stg] if isinstance(stg, str) and stg in stage_mapping else stg
-            for stg in stages
-        ]
+    raw_copy.filter(
+        picks='eeg',
+        l_freq=l_freq,
+        h_freq=h_freq,
+        method='fir',
+        fir_design='firwin',
+        phase='zero-double',
+        fir_window='hamming',
+        filter_length='auto',
+        verbose='ERROR'
+    )
 
-        mask = np.zeros(data.shape[1], dtype=bool)
-        idx = 0
-        for stage, duration, _ in psg:
-            for i in range(int(duration * fs)):
-                idx += i
-                if idx in range(data.shape[1]):
-                    mask[idx] = stage
-        mask = np.isin(mask, target_stage)
-    else:
-        # Use the entire data if no stages are provided
-        mask = np.ones(data.shape[1], dtype=bool)
+    eeg_data = raw_copy.get_data(picks='eeg')
+    if baseline:
+        eeg_data = eeg_data - np.mean(eeg_data, axis=1, keepdims=True)
 
-    # Bandpass filter the data to the slow wave (delta) band: 0.5 - 4 Hz
-    filtered_data = mne.filter.filter_data(data, sfreq=fs, l_freq=l_freq, h_freq=h_freq, verbose=False)
+    annotations = raw_copy.annotations
+    bad_epochs = [
+        (ann['onset'], ann['onset'] + ann['duration'])
+        for ann in annotations
+        if 'Bad_epoch' in ann['description']
+    ]
+    for bad_start, bad_end in bad_epochs:
+        bad_start_idx = int(bad_start * sfreq)
+        bad_end_idx = int(bad_end * sfreq)
+        eeg_data[:, bad_start_idx:bad_end_idx] = 0
 
-    # Compute the analytic signal via Hilbert transform along the time axis
-    analytic_signal = scipy.signal.hilbert(filtered_data, axis=1)
-    # Compute the amplitude envelope (i.e. the instantaneous amplitude)
+    # Hilbert envelope over full filtered EEG
+    analytic_signal = scipy.signal.hilbert(eeg_data, axis=1)
     amplitude_envelope = np.abs(analytic_signal)
 
-    # Average the amplitude envelope over time for each channel to get a SWA measure
-    swa_values = np.mean(amplitude_envelope[:, mask], axis=1)
+    swa_summary = []
 
-    # # Create and return a DataFrame with the results
-    # df = pd.DataFrame({
-    #     'Channel': ch_names,
-    #     'Slow_Wave_Activity': swa_values
-    # })
-    # Create a dictionary mapping each channel name to its slow wave activity value.
-    data_dict = {ch: swa for ch, swa in zip(ch_names, swa_values)}
+    # Per-stage, per-channel SWA
+    for s_val in target_stage:
+        stage_segments = [(val, dur, label) for (val, dur, label) in stage if val == s_val]
+        if not stage_segments:
+            continue
 
-    # Create a DataFrame with one row using the filename as the index.
-    df = pd.DataFrame([data_dict])
+        accumulated_time = 0.0
+        stage_masks = []
 
-    # Optionally, insert the filename as the first column.
-    df.insert(0, 'Participant_id', file_name)
+        for val, duration_s, _ in stage:
+            segment_start_time = accumulated_time
+            segment_end_time = segment_start_time + duration_s
+            accumulated_time += duration_s
 
-    return df
+            if val != s_val:
+                continue
+
+            seg_start_idx = int(segment_start_time * sfreq)
+            seg_end_idx = int(segment_end_time * sfreq)
+
+            mask = np.zeros(amplitude_envelope.shape[1], dtype=bool)
+            mask[seg_start_idx:seg_end_idx] = True
+            stage_masks.append(mask)
+
+        if not stage_masks:
+            continue
+
+        stage_mask = np.any(np.vstack(stage_masks), axis=0)
+        stage_swa = np.mean(amplitude_envelope[:, stage_mask], axis=1)
+
+        if verbose:
+            stage_name_map = {0: "Wake", 1: "N1", 2: "N2", 3: "SWS", 4: "REM"}
+            print(f"Computed SWA in stage {stage_name_map.get(s_val, s_val)}")
+            print(f"Band: {l_freq}-{h_freq} Hz")
+            print(f"Mean SWA across channels: {stage_swa.mean():.6f}")
+            print("---------------------------------------------------------------")
+
+        for ch_idx, swa_val in enumerate(stage_swa):
+            swa_summary.append({
+                'stage': s_val,
+                'channel': raw_copy.ch_names[ch_idx],
+                'swa': swa_val
+            })
+
+    swa_summary_df = pd.DataFrame(swa_summary)
+
+    # Add aggregated stage='all', channel='all'
+    if not swa_summary_df.empty:
+        all_stage_mask = np.zeros(amplitude_envelope.shape[1], dtype=bool)
+        accumulated_time = 0.0
+
+        for val, duration_s, _ in stage:
+            segment_start_time = accumulated_time
+            segment_end_time = segment_start_time + duration_s
+            accumulated_time += duration_s
+
+            if val not in target_stage:
+                continue
+
+            seg_start_idx = int(segment_start_time * sfreq)
+            seg_end_idx = int(segment_end_time * sfreq)
+            all_stage_mask[seg_start_idx:seg_end_idx] = True
+
+        all_swa = np.mean(amplitude_envelope[:, all_stage_mask], axis=1)
+
+        all_rows = [{'stage': 'all', 'channel': ch, 'swa': swa}
+                    for ch, swa in zip(raw_copy.ch_names[:len(all_swa)], all_swa)]
+
+        all_rows.append({
+            'stage': 'all',
+            'channel': 'all',
+            'swa': np.mean(all_swa)
+        })
+
+        swa_summary_df = pd.concat(
+            [swa_summary_df, pd.DataFrame(all_rows)],
+            ignore_index=True
+        )
+
+    return raw_copy, swa_summary_df
 
 
 def __detect_spindles_for_epoch(method, signal_1d, sfreq, l_freq, h_freq, dur_lower, dur_upper):
