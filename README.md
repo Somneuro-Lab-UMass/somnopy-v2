@@ -5,9 +5,13 @@ This package provides tools for analyzing sleep EEG data, focusing on **Sleep Sp
 - **EEG Preprocessing**
 - **Slow Oscillation (SO) Detection**
 - **Sleep Spindle (SP) Detection**
+- **Slow Wave Activity (SWA) Quantification**
 - **Phase-Amplitude Coupling (PAC) Analysis**
 - **Peri-Event Time Histogram (PETH) Analysis**
 - **Data Visualization for SOs and SPs**
+
+
+## 
 
 ## Features
 - **Multi-method SO and SP Detection**: Choose from various published detection methods.
@@ -89,6 +93,7 @@ MIT License
 - **Thea Ng**
 - **Atif Abedeen**
 - **Lindsey Mooney**
+- **Ryan Zaid**
 
 ## Acknowledgments
 This package integrates various methods from published research on sleep spindles and slow oscillations.

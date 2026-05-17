@@ -1,42 +1,60 @@
+[project]
+name = "somnopy"
+version = "0.1.0"
+description = "Local modified version of somnopy for sleep analysis"
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "numpy",
+    "pandas",
+    "mne",
+    "scipy",
+    "matplotlib",
+    "statsmodels",
+    "yasa",
+    "lspopt"
+]
+
 [build-system]
-requires = ["setuptools>=61.0",
-    "numpy>=1.23.5",
-    "pandas>=1.5.2",
-    "mne>=1.8.0",
-    "matplotlib>=3.6.2",
-    "pytz>=2022.6",
-    "scipy>=1.9.3",
-    "seaborn>=0.12.1",
-    "statsmodels>=0.13.5"]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["somnopy*"]
+
+
+
+
+
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "somnopy"
-version = "0.0.9"
+version = "0.0.9.1"
 authors = [
     { name = "Thea Ng", email = "somneurolab@umass.edu" },
     { name = "Roger Balcells Sanchez", email = "somneurolab@umass.edu" },
     { name = "Atif Abedeen", email = "somneurolab@umass.edu" },
     { name = "Lindsey Mooney", email = "somneurolab@umass.edu" },
+    { name = "Ryan Zaid", email = "somneurolab@umass.edu" },
 ]
+
 description = "PSG Power for Python"
 readme = "README.md"
 requires-python = ">=3.8"
+license = { file = "LICENSE.txt" }
+
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
-license = { file = "LICENSE.txt" }
 
-[project.urls]
-Homepage = "https://github.com/Somneuro-Lab-UMass/PSG-Party"
-Issues = "https://github.com/Somneuro-Lab-UMass/PSG-Party/issues"
-
-[project.optional-dependencies]
-docs = [
-    "sphinx>=4.0",
-    "sphinx-rtd-theme",
-    "setuptools>=61.0",
+dependencies = [
     "numpy>=1.23.5",
     "pandas>=1.5.2",
     "mne>=1.8.0",
@@ -44,7 +62,18 @@ docs = [
     "pytz>=2022.6",
     "scipy>=1.9.3",
     "seaborn>=0.12.1",
-    "statsmodels>=0.13.5"
+    "statsmodels>=0.13.5",
+    "yasa",
+    "lspopt",
+]
+
+[project.urls]
+Homepage = "https://github.com/Somneuro-Lab-UMass/somnopy-v2"
+
+[project.optional-dependencies]
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme",
 ]
 
 [tool.setuptools.packages.find]
