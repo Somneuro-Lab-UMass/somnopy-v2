@@ -11,8 +11,6 @@ This package provides tools for analyzing sleep EEG data, focusing on **Sleep Sp
 - **Data Visualization for SOs and SPs**
 
 
-## 
-
 ## Features
 - **Multi-method SO and SP Detection**: Choose from various published detection methods.
 - **Coupling Analysis**: Computes phase-amplitude coupling between SOs and SPs.

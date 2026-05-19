@@ -1,34 +1,3 @@
-[project]
-name = "somnopy"
-version = "0.1.0"
-description = "Local modified version of somnopy for sleep analysis"
-readme = "README.md"
-requires-python = ">=3.9"
-
-dependencies = [
-    "numpy",
-    "pandas",
-    "mne",
-    "scipy",
-    "matplotlib",
-    "statsmodels",
-    "yasa",
-    "lspopt"
-]
-
-[build-system]
-requires = ["setuptools>=61", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["somnopy*"]
-
-
-
-
-
-
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
