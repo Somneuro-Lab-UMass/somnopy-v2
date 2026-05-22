@@ -29,6 +29,7 @@ import yasa
 from lspopt import spectrogram_lspopt
 from scipy.io import loadmat
 from scipy.stats import spearmanr
+from datetime import datetime, timedelta
 
 
 class YasaFunctions:
@@ -56,6 +57,8 @@ class YasaFunctions:
                 7: -2,
             }
 
+        self.recording_start = None
+        self.hyp_start = None
         self.stage_mapping = stage_mapping
         self.input_data = None
         self.channels = None
@@ -63,6 +66,17 @@ class YasaFunctions:
         self.sampling_rate = None
         self.hyp_window = None
         self.raw = None
+        self.stages_per_quad = None
+
+        self.YASA_STAGE_NAMES = {
+            -2: "Unscored",
+            -1: "Artifact",
+            0: "Wake",
+            1: "N1",
+            2: "N2",
+            3: "N3",
+            4: "REM",
+        }
 
     def _resolve_stage_mapping(self, stage_mapping: Optional[Dict[Any, int]] = None):
         if stage_mapping is not None:
@@ -119,6 +133,8 @@ class YasaFunctions:
             hyp_data = mat["stageData"]["stages"][0, 0].squeeze().astype(int)
             hyp_window = int(mat["stageData"]["win"][0][0][0][0])
             hyp_srate = int(mat["stageData"]["srate"][0][0][0][0])
+            hyp_start = self._matlab_datenum_to_datetime(mat["stageData"]["recStart"][0][0][0][0])
+
 
             #convert the integer codes present in hyp_data into YASA approved integer codes
             hyp_yasa = np.array([stage_mapping[x] for x in hyp_data], dtype=int)
@@ -167,6 +183,8 @@ class YasaFunctions:
             channel: data
             for channel, data in zip(channels, raw_data)
         }
+        recording_start = pd.to_datetime(raw.info["meas_date"]).tz_localize(None)
+        self.recording_start = recording_start
 
         hypno = yasa.hypno_upsample_to_data(
             hypno=hyp_yasa,
@@ -175,11 +193,19 @@ class YasaFunctions:
             sf_data=sampling_rate,
         )
 
-        recording_start = pd.to_datetime(raw.info["meas_date"]).tz_localize(None)
+        '''
+        hypno = self._shift_hypno_by_time(
+            hypno=hypno,
+            hyp_start=hyp_start,
+            sampling_rate=sampling_rate,
+        )
+        '''
+        
+
 
 
         #store class attributes
-        self.recording_start = recording_start
+        self.hyp_start = hyp_start
         self.input_data = input_data
         self.channels = channels
         self.hypno = hypno
@@ -188,6 +214,76 @@ class YasaFunctions:
         self.raw = raw
 
         return input_data, channels, hypno, recording_start, sampling_rate, hyp_window, raw
+    
+
+    def _shift_hypno_by_time(
+            self,
+            hypno: np.ndarray,
+            hyp_start: pd.Timestamp,
+            sampling_rate: float,
+            verbose: bool = True,
+        ) -> np.ndarray:
+        """
+        Shift an already-upsampled hypnogram so its start time aligns with EDF start.
+
+        Positive offset:
+            hypnogram starts after EDF, so pad beginning with -2 and crop end.
+
+        Negative offset:
+            hypnogram starts before EDF, so crop beginning and pad end with -2.
+        """
+        if self.recording_start is None:
+            raise ValueError("recording_start is missing.")
+
+        hyp_start = self._strip_tz(hyp_start)
+
+        offset_sec = (hyp_start - self.recording_start).total_seconds()
+        offset_samples = int(round(offset_sec * sampling_rate))
+
+        if verbose:
+            print("EDF start:", self.recording_start)
+            print("Hypnogram start:", hyp_start)
+            print("Offset seconds:", offset_sec)
+            print("Offset samples:", offset_samples)
+
+        n_samples = len(hypno)
+
+        if offset_samples > 0:
+            # Hypnogram starts after EDF.
+            # Add unscored samples at beginning, then crop back to original length.
+            shifted = np.pad(
+                hypno,
+                (offset_samples, 0),
+                mode="constant",
+                constant_values=np.int16(-2),
+            )
+            shifted = shifted[:n_samples]
+
+        elif offset_samples < 0:
+            # Hypnogram starts before EDF.
+            # Remove early hypnogram samples, then pad end.
+            crop_start = abs(offset_samples)
+
+            if crop_start >= n_samples:
+                shifted = np.full(n_samples, -2, dtype=int)
+            else:
+                shifted = hypno[crop_start:]
+                shifted = np.pad(
+                    shifted,
+                    (0, n_samples - len(shifted)),
+                    mode="constant",
+                    constant_values=np.int16(-2),
+                )
+
+        else:
+            shifted = hypno
+
+        if verbose:
+            print("Final hypno samples:", len(shifted))
+            print("Unique values:", np.unique(shifted, return_counts=True))
+
+        return shifted.astype(int)
+
 
     def plot_single_electrode(
         self,
@@ -403,7 +499,6 @@ class YasaFunctions:
         filename: str = "participant",
         fmin: float = 0.5,
         fmax: float = 25,
-        recording_start: Optional[str | pd.Timestamp] = None,
         temp_color: str = "black",
         temp_linewidth: float = 2,
         temp_alpha: float = 0.9,
@@ -418,14 +513,13 @@ class YasaFunctions:
 
         temp_plot_df = self._prepare_temp_df(temp_df)
 
-        if recording_start is None:
-            recording_start = temp_plot_df["datetime"].iloc[0]
-        else:
-            recording_start = pd.to_datetime(recording_start)
+        if self.recording_start is None:
+            raise ValueError("recording_start is missing. Run load_yasa_from_edf first.")
 
         temp_plot_df["hours_from_start"] = (
-            temp_plot_df["datetime"] - recording_start
+            temp_plot_df["datetime"] - self.recording_start
         ).dt.total_seconds() / 3600.0
+
 
         fig = yasa.plot_spectrogram(
             self.input_data[electrode],
@@ -486,6 +580,20 @@ class YasaFunctions:
             axis=1,
         )
         return df
+    
+
+    @staticmethod
+    def _matlab_datenum_to_datetime(matlab_datenum) -> pd.Timestamp:
+        """Convert MATLAB datenum to pandas Timestamp."""
+        matlab_datenum = float(matlab_datenum)
+
+        py_datetime = (
+            datetime.fromordinal(int(matlab_datenum))
+            + timedelta(days=matlab_datenum % 1)
+            - timedelta(days=366)
+        )
+
+        return pd.Timestamp(py_datetime)
 
     @staticmethod
     def _strip_tz(ts):
@@ -593,10 +701,6 @@ class YasaFunctions:
 
                 temp_df = self.load_cbt(item["xlsx"])
 
-                recording_start = self.raw.info.get("meas_date", None)
-                if recording_start is not None:
-                    recording_start = self._strip_tz(recording_start)
-
                 file_out = out_folder / stem
                 file_out.mkdir(parents=True, exist_ok=True)
 
@@ -607,8 +711,7 @@ class YasaFunctions:
                     outpath=file_out,
                     filename=stem,
                     fmin=fmin,
-                    fmax=fmax,
-                    recording_start=recording_start,
+                    fmax=fmax
                 )
 
                 plt.close(fig)
@@ -697,10 +800,10 @@ class YasaFunctions:
                 temp_df = self.load_cbt(item["xlsx"])
                 temp_df = self._prepare_temp_df(temp_df)
 
-                recording_start = self.raw.info.get("meas_date", None)
-                if recording_start is None:
-                    raise ValueError("EDF recording start time (raw.info['meas_date']) is missing.")
-                recording_start = self._strip_tz(recording_start)
+                if self.recording_start is None:
+                    raise ValueError("recording_start is missing. Run load_yasa_from_edf first.")
+
+                recording_start = self.recording_start
 
                 band_df = self.save_spectrogram_csv(
                     electrode=electrode,
@@ -824,3 +927,175 @@ class YasaFunctions:
             group_summary = pd.DataFrame()
 
         return results_df, merged_dict, group_summary
+    
+    
+
+    def hours_per_stage_per_quadrant(self):
+
+        quads = np.array_split(self.hypno, 4)
+
+        stages_per_quad = {}
+        for quad, data in zip(["q1", "q2", "q3", "q4"], quads):
+            hours_per_stage = {}
+            stages = np.unique(self.hypno)
+
+            for stage in stages:
+                stage_name = self.YASA_STAGE_NAMES.get(int(stage), f"Unknown code ({stage})")
+                hours_per_stage[stage_name] = np.sum(data == stage) / self.sampling_rate / 3600
+            
+            stages_per_quad[quad] = hours_per_stage
+
+        self.stages_per_quad = stages_per_quad
+        return stages_per_quad
+
+    def plot_stage_hours_by_quadrant(self,
+        stages_per_quad_list,
+        recording_names=None,
+        stage_name_map=None,
+        save_dir=None,
+        show=True,
+        units="hours",
+    ):
+        """
+        Plot time spent in each sleep stage across sleep quadrants for multiple recordings.
+
+        Parameters
+        ----------
+        stages_per_quad_list : list[dict]
+            List of dictionaries returned by hours_per_stage_per_quadrant().
+            Expected format:
+            {
+                "q1": {stage: hours, stage: hours, ...},
+                "q2": {stage: hours, stage: hours, ...},
+                ...
+            }
+
+        recording_names : list[str], optional
+            Names for each recording. Example: ["baseline", "experiment"].
+
+        stage_name_map : dict, optional
+            Maps numeric stage codes to readable names.
+            Example: {0: "Wake", 1: "N1", 2: "N2", 3: "N3", 4: "REM", -2: "Unscored"}
+
+        save_dir : str or Path, optional
+            If provided, saves each figure to this folder.
+
+        show : bool
+            Whether to display plots immediately.
+
+        units : str
+            "hours" or "minutes".
+
+        Returns
+        -------
+        figs : dict
+            Dictionary mapping sleep stage to matplotlib figure.
+
+        df : pd.DataFrame
+            Long-form dataframe used for plotting.
+        """
+
+        if recording_names is None:
+            recording_names = [
+                f"Recording {i + 1}" for i in range(len(stages_per_quad_list))
+            ]
+
+        if len(recording_names) != len(stages_per_quad_list):
+            raise ValueError("recording_names must match stages_per_quad_list length.")
+
+        if stage_name_map is None:
+            stage_name_map = {}
+
+        quadrants = ["q1", "q2", "q3", "q4"]
+
+        all_stages = set()
+        for stages_per_quad in stages_per_quad_list:
+            for quad in quadrants:
+                if quad in stages_per_quad:
+                    all_stages.update(stages_per_quad[quad].keys())
+
+        all_stages = sorted(all_stages, key=lambda x: float(x) if str(x).lstrip("-").isdigit() else str(x))
+
+        rows = []
+
+        for recording_name, stages_per_quad in zip(recording_names, stages_per_quad_list):
+            for quad in quadrants:
+                quad_data = stages_per_quad.get(quad, {})
+
+                for stage in all_stages:
+                    hours = quad_data.get(stage, 0)
+
+                    if units == "minutes":
+                        value = hours * 60
+                    else:
+                        value = hours
+
+                    rows.append({
+                        "recording": recording_name,
+                        "quadrant": quad,
+                        "stage": stage,
+                        "stage_name": stage_name_map.get(stage, str(stage)),
+                        "time": value,
+                    })
+
+        df = pd.DataFrame(rows)
+
+        if save_dir is not None:
+            save_dir = Path(save_dir)
+            save_dir.mkdir(parents=True, exist_ok=True)
+
+        figs = {}
+
+        for stage in all_stages:
+            stage_df = df[df["stage"] == stage]
+            stage_name = stage_name_map.get(stage, str(stage))
+
+            fig, ax = plt.subplots(figsize=(8, 5))
+
+            x = np.arange(len(quadrants))
+            n_recordings = len(recording_names)
+            width = min(0.8 / n_recordings, 0.35)
+
+            for i, recording_name in enumerate(recording_names):
+                rec_df = stage_df[stage_df["recording"] == recording_name]
+
+                y = [
+                    rec_df.loc[rec_df["quadrant"] == quad, "time"].iloc[0]
+                    for quad in quadrants
+                ]
+
+                offset = (i - (n_recordings - 1) / 2) * width
+
+                ax.bar(
+                    x + offset,
+                    y,
+                    width=width,
+                    label=recording_name,
+                    alpha=0.85,
+                )
+
+            ax.set_title(f"{stage_name}: Time Spent per Sleep Quadrant", fontsize=14)
+            ax.set_xlabel("Sleep Quadrant")
+            ax.set_ylabel(f"Time Spent ({units})")
+            ax.set_xticks(x)
+            ax.set_xticklabels(["Q1", "Q2", "Q3", "Q4"])
+            ax.grid(axis="y", alpha=0.25)
+            ax.legend(frameon=False)
+
+            fig.tight_layout()
+
+            if save_dir is not None:
+                safe_stage_name = str(stage_name).replace(" ", "_").replace("/", "_")
+                fig.savefig(
+                    save_dir / f"{safe_stage_name}_quadrant_comparison.png",
+                    dpi=300,
+                    bbox_inches="tight",
+                )
+
+            if not show:
+                plt.close(fig)
+
+            figs[stage] = fig
+
+        return figs, df
+            
