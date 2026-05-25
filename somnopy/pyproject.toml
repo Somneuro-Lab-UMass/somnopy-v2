@@ -32,14 +32,22 @@ dependencies = [
     "scipy>=1.9.3",
     "seaborn>=0.12.1",
     "statsmodels>=0.13.5",
+    openpyxl,
     "yasa",
-    "lspopt",
+    "lspopt"
 ]
 
 [project.urls]
 Homepage = "https://github.com/Somneuro-Lab-UMass/somnopy-v2"
 
 [project.optional-dependencies]
+
+notebooks = [
+    "jupyter",
+    "notebook",
+    "ipykernel",
+]
+
 docs = [
     "sphinx>=4.0",
     "sphinx-rtd-theme",
