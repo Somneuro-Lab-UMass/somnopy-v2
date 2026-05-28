@@ -67,6 +67,7 @@ class YasaFunctions:
         self.hyp_window = None
         self.raw = None
         self.stages_per_quad = None
+        self.cbt=None
 
         self.YASA_STAGE_NAMES = {
             -2: "Unscored",
@@ -493,7 +494,6 @@ class YasaFunctions:
     def plot_single_electrode_with_temp(
         self,
         electrode: str,
-        temp_df: pd.DataFrame,
         verbose: bool = False,
         outpath: Optional[str | Path] = None,
         filename: str = "participant",
@@ -511,7 +511,7 @@ class YasaFunctions:
                 f"Electrode '{electrode}' not found. Available channels: {list(self.input_data.keys())}"
             )
 
-        temp_plot_df = self._prepare_temp_df(temp_df)
+        temp_plot_df = self.cbt
 
         if self.recording_start is None:
             raise ValueError("recording_start is missing. Run load_yasa_from_edf first.")
@@ -568,8 +568,7 @@ class YasaFunctions:
 
         return fig, ax_temp, temp_plot_df
 
-    @staticmethod
-    def load_cbt(filepath: str | Path) -> pd.DataFrame:
+    def load_cbt(self, filepath: str | Path) -> pd.DataFrame:
         """Load a core body temperature Excel file and standardize column names."""
         df = pd.read_excel(filepath).rename(
             {
@@ -579,7 +578,11 @@ class YasaFunctions:
             },
             axis=1,
         )
-        return df
+
+        prepared_df = self._prepare_temp_df(df)
+
+        self.cbt = prepared_df
+        return prepared_df
     
 
     @staticmethod
@@ -929,165 +932,433 @@ class YasaFunctions:
         return results_df, merged_dict, group_summary
     
     
-
-    def hours_per_stage_per_quadrant(self):
-
-        quads = np.array_split(self.hypno, 4)
-
-        stages_per_quad = {}
-        for quad, data in zip(["q1", "q2", "q3", "q4"], quads):
-            hours_per_stage = {}
-            stages = np.unique(self.hypno)
-
-            for stage in stages:
-                stage_name = self.YASA_STAGE_NAMES.get(int(stage), f"Unknown code ({stage})")
-                hours_per_stage[stage_name] = np.sum(data == stage) / self.sampling_rate / 3600
-            
-            stages_per_quad[quad] = hours_per_stage
-
-        self.stages_per_quad = stages_per_quad
-        return stages_per_quad
-
-    def plot_stage_hours_by_quadrant(self,
-        stages_per_quad_list,
-        recording_names=None,
-        stage_name_map=None,
-        save_dir=None,
-        show=True,
-        units="hours",
+    def hours_per_stage_per_quadrant(
+        self,
+        participant_id: Optional[str] = None,
+        phase: Optional[str] = None,
+        stage_codes: Optional[list[int]] = None,
+        quadrant_labels: Optional[list[str]] = None,
+        return_df: bool = False,
     ):
         """
-        Plot time spent in each sleep stage across sleep quadrants for multiple recordings.
+        Calculate how much of each sleep stage occurs in each night quadrant
+        for the currently loaded recording.
 
         Parameters
         ----------
-        stages_per_quad_list : list[dict]
-            List of dictionaries returned by hours_per_stage_per_quadrant().
-            Expected format:
-            {
-                "q1": {stage: hours, stage: hours, ...},
-                "q2": {stage: hours, stage: hours, ...},
-                ...
-            }
+        participant_id : str, optional
+            Participant/file stem for the loaded recording.
 
-        recording_names : list[str], optional
-            Names for each recording. Example: ["baseline", "experiment"].
+        phase : str, optional
+            Phase label, such as "follicular" or "luteal".
 
-        stage_name_map : dict, optional
-            Maps numeric stage codes to readable names.
-            Example: {0: "Wake", 1: "N1", 2: "N2", 3: "N3", 4: "REM", -2: "Unscored"}
+        stage_codes : list[int], optional
+            YASA stage codes to include. Default is [1, 2, 3, 4].
 
-        save_dir : str or Path, optional
-            If provided, saves each figure to this folder.
+        quadrant_labels : list[str], optional
+            Labels for the four equal recording chunks.
 
-        show : bool
-            Whether to display plots immediately.
-
-        units : str
-            "hours" or "minutes".
+        return_df : bool
+            If True, return the long-form dataframe. If False, return the
+            original nested dictionary format for backwards compatibility.
 
         Returns
         -------
-        figs : dict
-            Dictionary mapping sleep stage to matplotlib figure.
+        stages_per_quad : dict
+            Nested dictionary of hours per stage per quadrant.
 
         df : pd.DataFrame
-            Long-form dataframe used for plotting.
+            Returned only when return_df=True. Long-form table with hours
+            and percent columns.
         """
+        self._check_loaded()
 
-        if recording_names is None:
-            recording_names = [
-                f"Recording {i + 1}" for i in range(len(stages_per_quad_list))
-            ]
+        if stage_codes is None:
+            stage_codes = [0, 1, 2, 3, 4]
 
-        if len(recording_names) != len(stages_per_quad_list):
-            raise ValueError("recording_names must match stages_per_quad_list length.")
+        if quadrant_labels is None:
+            quadrant_labels = ["q1", "q2", "q3", "q4"]
 
-        if stage_name_map is None:
-            stage_name_map = {}
+        if len(quadrant_labels) != 4:
+            raise ValueError("quadrant_labels must contain exactly four labels.")
 
-        quadrants = ["q1", "q2", "q3", "q4"]
 
-        all_stages = set()
-        for stages_per_quad in stages_per_quad_list:
-            for quad in quadrants:
-                if quad in stages_per_quad:
-                    all_stages.update(stages_per_quad[quad].keys())
+        hypno = np.asarray(self.hypno).astype(int)
+        quads = np.array_split(hypno, 4)
 
-        all_stages = sorted(all_stages, key=lambda x: float(x) if str(x).lstrip("-").isdigit() else str(x))
-
+        stages_per_quad = {}
         rows = []
 
-        for recording_name, stages_per_quad in zip(recording_names, stages_per_quad_list):
-            for quad in quadrants:
-                quad_data = stages_per_quad.get(quad, {})
+        for quadrant_num, (quad, data) in enumerate(zip(quadrant_labels, quads), start=1):
+            stages_per_quad[quad] = {}
 
-                for stage in all_stages:
-                    hours = quad_data.get(stage, 0)
+            for stage_code in stage_codes:
+                stage_code = int(stage_code)
+                stage_name = self.YASA_STAGE_NAMES.get(
+                    stage_code,
+                    f"Unknown code ({stage_code})",
+                )
 
-                    if units == "minutes":
-                        value = hours * 60
-                    else:
-                        value = hours
+                n_samples = int(np.sum(data == stage_code))
+                seconds = n_samples / float(self.sampling_rate)
+                hours = seconds / 3600.0
 
-                    rows.append({
-                        "recording": recording_name,
+                stages_per_quad[quad][stage_name] = hours
+
+                rows.append(
+                    {
+                        "phase": phase,
+                        "participant": participant_id,
                         "quadrant": quad,
-                        "stage": stage,
-                        "stage_name": stage_name_map.get(stage, str(stage)),
-                        "time": value,
-                    })
+                        "quadrant_num": quadrant_num,
+                        "stage_code": stage_code,
+                        "stage_name": stage_name,
+                        "n_samples": n_samples,
+                        "seconds": seconds,
+                        "minutes": seconds / 60.0,
+                        "hours": hours,
+                    }
+                )
 
         df = pd.DataFrame(rows)
+
+        denominator = df.groupby("stage_code")["hours"].transform("sum")
+
+        if isinstance(denominator, pd.Series):
+            denominator_values = denominator.to_numpy()
+        else:
+            denominator_values = np.repeat(float(denominator), len(df))
+
+        df["percent"] = np.where(
+            denominator_values > 0,
+            (df["hours"].to_numpy() / denominator_values) * 100.0,
+            0.0,
+        )
+
+        self.stages_per_quad = stages_per_quad
+        self.stages_per_quad_df = df
+
+        if return_df:
+            return stages_per_quad, df
+
+        return stages_per_quad
+
+    def plot_stage_hours_by_quadrant(
+        self,
+        phase_folders: Optional[Dict[str, str | Path]] = None,
+        follicular_folder: Optional[str | Path] = None,
+        luteal_folder: Optional[str | Path] = None,
+        save_dir: Optional[str | Path] = None,
+        stage_mapping: Optional[Dict[Any, int]] = None,
+        stage_codes: Optional[list[int]] = None,
+        make_participant_plots: bool = True,
+        show: bool = False,
+    ):
+        """
+        Batch analyze sleep-stage quadrant percentages for follicular vs luteal
+        folders and generate line plots.
+
+        Each phase folder is expected to contain matching .edf and .mat files.
+        The .xlsx CBT files can be present in the same folder, but they are not
+        needed for this sleep-stage quadrant analysis. Set require_xlsx=True if
+        you want to process only stems that have EDF, MAT, and XLSX files.
+
+        This method:
+        1. Loads each participant using load_yasa_from_edf().
+        2. Splits that participant's hypnogram into four equal night quadrants.
+        3. Calculates hours and percentages per stage per quadrant.
+        4. Sums stage hours across participants within each phase.
+        5. Recomputes phase-level percentages from the summed hours.
+        6. Saves group-level line plots and optional per-participant line plots.
+
+        Parameters
+        ----------
+        phase_folders : dict, optional
+            Example:
+            {
+                "follicular": r"path/to/follicular",
+                "luteal": r"path/to/luteal",
+            }
+
+        follicular_folder, luteal_folder : str or Path, optional
+            Convenience arguments if you do not want to pass phase_folders.
+
+        save_dir : str or Path, optional
+            Output folder for CSVs and PNG figures.
+
+        stage_mapping : dict, optional
+            Mapping passed to load_yasa_from_edf().
+
+        stage_codes : list[int], optional
+            YASA stage codes to include. Default is [1, 2, 3, 4].
+            Use [0, 1, 2, 3, 4] if you also want Wake.
+
+        percent_denominator : str
+            Default is "stage_total", so each stage sums to 100% across Q1-Q4
+            within each participant or phase.
+
+        require_xlsx : bool
+            If True, only process participants with matching EDF, MAT, and XLSX
+            stems. If False, only EDF and MAT are required.
+
+        make_participant_plots : bool
+            Whether to save one line graph per participant.
+
+        show : bool
+            Whether to display plots.
+
+        Returns
+        -------
+        results : dict
+            {
+                "participant_df": long-form per-participant table,
+                "group_df": phase-level table after summing across participants,
+                "status_df": processing status table,
+                "group_figs": group-level matplotlib figures,
+                "participant_figs": per-participant matplotlib figures,
+            }
+        """
+        stage_mapping = self._resolve_stage_mapping(stage_mapping)
+
+        if stage_codes is None:
+            stage_codes = [0, 1, 2, 3, 4]
+
+        if phase_folders is None:
+            phase_folders = {}
+
+            if follicular_folder is not None:
+                phase_folders["follicular"] = follicular_folder
+
+            if luteal_folder is not None:
+                phase_folders["luteal"] = luteal_folder
+
+        if not phase_folders:
+            raise ValueError(
+                "Pass either phase_folders or follicular_folder/luteal_folder."
+            )
+
+        phase_folders = {
+            str(phase): Path(folder)
+            for phase, folder in phase_folders.items()
+        }
 
         if save_dir is not None:
             save_dir = Path(save_dir)
             save_dir.mkdir(parents=True, exist_ok=True)
+            group_plot_dir = save_dir / "group_plots"
+            participant_plot_dir = save_dir / "participant_plots"
+            group_plot_dir.mkdir(parents=True, exist_ok=True)
+            participant_plot_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            group_plot_dir = None
+            participant_plot_dir = None
 
-        figs = {}
+        def _safe_name(value):
+            value = str(value)
+            return "".join(
+                char if char.isalnum() or char in ("-", "_") else "_"
+                for char in value
+            )
 
-        for stage in all_stages:
-            stage_df = df[df["stage"] == stage]
-            stage_name = stage_name_map.get(stage, str(stage))
+        def _phase_file_sets(folder):
+            files = [path for path in folder.iterdir() if path.is_file()]
+
+            edf_files = {
+                path.stem: path
+                for path in files
+                if path.suffix.lower() == ".edf"
+            }
+            mat_files = {
+                path.stem: path
+                for path in files
+                if path.suffix.lower() == ".mat"
+            }
+            xlsx_files = {
+                path.stem: path
+                for path in files
+                if path.suffix.lower() == ".xlsx"
+            }
+
+            common = set(edf_files) & set(mat_files)
+
+            return [
+                {
+                    "stem": stem,
+                    "edf": edf_files[stem],
+                    "mat": mat_files[stem],
+                    "xlsx": xlsx_files.get(stem),
+                }
+                for stem in sorted(common)
+            ]
+
+        participant_dfs = []
+        status_rows = []
+
+        for phase, folder in phase_folders.items():
+            if not folder.exists():
+                raise FileNotFoundError(f"Folder does not exist: {folder}")
+
+            file_sets = _phase_file_sets(folder)
+
+            print(f"\n{phase}: found {len(file_sets)} matched file sets.")
+
+            for item in file_sets:
+                stem = item["stem"]
+                print(f"Processing {phase}: {stem}")
+
+                try:
+                    self.load_yasa_from_edf(
+                        edf_path=item["edf"],
+                        hyp_path=item["mat"],
+                        stage_mapping=stage_mapping,
+                    )
+
+                    _, participant_df = self.hours_per_stage_per_quadrant(
+                        participant_id=stem,
+                        phase=phase,
+                        stage_codes=stage_codes,
+                        return_df=True,
+                    )
+
+                    participant_dfs.append(participant_df)
+
+                    status_rows.append(
+                        {
+                            "phase": phase,
+                            "participant": stem,
+                            "edf_file": str(item["edf"]),
+                            "mat_file": str(item["mat"]),
+                            "status": "success",
+                            "error": None,
+                        }
+                    )
+
+                    print(f"✅ Success: {stem}")
+
+                except Exception as exc:
+                    status_rows.append(
+                        {
+                            "phase": phase,
+                            "participant": stem,
+                            "edf_file": str(item["edf"]),
+                            "mat_file": str(item["mat"]),
+                            "status": "failed",
+                            "error": str(exc),
+                        }
+                    )
+
+                    print(f"❌ Failed: {stem}: {exc}")
+
+        status_df = pd.DataFrame(status_rows)
+
+        if not participant_dfs:
+            if save_dir is not None:
+                status_df.to_csv(save_dir / "quadrant_processing_status.csv", index=False)
+
+            raise ValueError("No participants were successfully processed.")
+
+        participant_df = pd.concat(participant_dfs, ignore_index=True)
+
+        group_cols = [
+            "phase",
+            "quadrant",
+            "quadrant_num",
+            "stage_code",
+            "stage_name",
+        ]
+
+        group_df = (
+            participant_df
+            .groupby(group_cols, as_index=False)
+            .agg(
+                n_samples=("n_samples", "sum"),
+                seconds=("seconds", "sum"),
+                minutes=("minutes", "sum"),
+                hours=("hours", "sum"),
+                n_participants=("participant", "nunique"),
+            )
+        )
+
+        denominator = group_df.groupby(["phase", "stage_code"])["hours"].transform("sum")
+
+        group_df["percent"] = np.where(
+            denominator.to_numpy() > 0,
+            (group_df["hours"].to_numpy() / denominator.to_numpy()) * 100.0,
+            0.0,
+        )
+
+        if save_dir is not None:
+            participant_df.to_csv(
+                save_dir / "participant_quadrant_stage_percent.csv",
+                index=False,
+            )
+            group_df.to_csv(
+                save_dir / "phase_quadrant_stage_percent.csv",
+                index=False,
+            )
+            status_df.to_csv(
+                save_dir / "quadrant_processing_status.csv",
+                index=False,
+            )
+
+        y_label = "% of total time in this stage"
+
+        quadrants = ["q1", "q2", "q3", "q4"]
+        x = np.arange(1, 5)
+
+        group_figs = {}
+
+        for stage_code in stage_codes:
+            stage_code = int(stage_code)
+            stage_name = self.YASA_STAGE_NAMES.get(
+                stage_code,
+                f"Unknown code ({stage_code})",
+            )
 
             fig, ax = plt.subplots(figsize=(8, 5))
 
-            x = np.arange(len(quadrants))
-            n_recordings = len(recording_names)
-            width = min(0.8 / n_recordings, 0.35)
-
-            for i, recording_name in enumerate(recording_names):
-                rec_df = stage_df[stage_df["recording"] == recording_name]
-
-                y = [
-                    rec_df.loc[rec_df["quadrant"] == quad, "time"].iloc[0]
-                    for quad in quadrants
+            for phase in phase_folders:
+                plot_df = group_df[
+                    (group_df["phase"] == phase)
+                    & (group_df["stage_code"] == stage_code)
                 ]
 
-                offset = (i - (n_recordings - 1) / 2) * width
+                y = []
+                for quadrant_num in x:
+                    value = plot_df.loc[
+                        plot_df["quadrant_num"] == quadrant_num,
+                        "percent",
+                    ]
 
-                ax.bar(
-                    x + offset,
+                    if len(value) == 0:
+                        y.append(np.nan)
+                    else:
+                        y.append(float(value.iloc[0]))
+
+                ax.plot(
+                    x,
                     y,
-                    width=width,
-                    label=recording_name,
-                    alpha=0.85,
+                    marker="o",
+                    linewidth=2,
+                    label=phase,
                 )
 
-            ax.set_title(f"{stage_name}: Time Spent per Sleep Quadrant", fontsize=14)
-            ax.set_xlabel("Sleep Quadrant")
-            ax.set_ylabel(f"Time Spent ({units})")
+            ax.set_title(
+                f"{stage_name}: Sleep Stage Distribution Across Night Quadrants"
+            )
+            ax.set_xlabel("Night Quadrant")
+            ax.set_ylabel(y_label)
             ax.set_xticks(x)
             ax.set_xticklabels(["Q1", "Q2", "Q3", "Q4"])
-            ax.grid(axis="y", alpha=0.25)
+            ax.set_ylim(bottom=0)
+            ax.grid(alpha=0.25)
             ax.legend(frameon=False)
 
             fig.tight_layout()
 
-            if save_dir is not None:
-                safe_stage_name = str(stage_name).replace(" ", "_").replace("/", "_")
+            if group_plot_dir is not None:
                 fig.savefig(
-                    save_dir / f"{safe_stage_name}_quadrant_comparison.png",
+                    group_plot_dir / f"group_{_safe_name(stage_name)}_quadrant_percent.png",
                     dpi=300,
                     bbox_inches="tight",
                 )
@@ -1095,7 +1366,79 @@ class YasaFunctions:
             if not show:
                 plt.close(fig)
 
-            figs[stage] = fig
+            group_figs[stage_name] = fig
 
-        return figs, df
+        participant_figs = {}
+
+        if make_participant_plots:
+            for (phase, participant), plot_df in participant_df.groupby(["phase", "participant"]):
+                fig, ax = plt.subplots(figsize=(8, 5))
+
+                for stage_code in stage_codes:
+                    stage_code = int(stage_code)
+                    stage_name = self.YASA_STAGE_NAMES.get(
+                        stage_code,
+                        f"Unknown code ({stage_code})",
+                    )
+
+                    stage_df = plot_df[plot_df["stage_code"] == stage_code]
+
+                    y = []
+                    for quadrant_num in x:
+                        value = stage_df.loc[
+                            stage_df["quadrant_num"] == quadrant_num,
+                            "percent",
+                        ]
+
+                        if len(value) == 0:
+                            y.append(np.nan)
+                        else:
+                            y.append(float(value.iloc[0]))
+
+                    ax.plot(
+                        x,
+                        y,
+                        marker="o",
+                        linewidth=2,
+                        label=stage_name,
+                    )
+
+                ax.set_title(
+                    f"{participant} ({phase}): Sleep Stage Distribution Across Night Quadrants"
+                )
+                ax.set_xlabel("Night Quadrant")
+                ax.set_ylabel(y_label)
+                ax.set_xticks(x)
+                ax.set_xticklabels(["Q1", "Q2", "Q3", "Q4"])
+                ax.set_ylim(bottom=0)
+                ax.grid(alpha=0.25)
+                ax.legend(frameon=False)
+
+                fig.tight_layout()
+
+                if participant_plot_dir is not None:
+                    phase_dir = participant_plot_dir / _safe_name(phase)
+                    phase_dir.mkdir(parents=True, exist_ok=True)
+
+                    fig.savefig(
+                        phase_dir / f"{_safe_name(participant)}_quadrant_stage_percent.png",
+                        dpi=300,
+                        bbox_inches="tight",
+                    )
+
+                if not show:
+                    plt.close(fig)
+
+                participant_figs[(phase, participant)] = fig
+
+        results = {
+            "participant_df": participant_df,
+            "group_df": group_df,
+            "status_df": status_df,
+            "group_figs": group_figs,
+            "participant_figs": participant_figs,
+        }
+
+        return results
+
             

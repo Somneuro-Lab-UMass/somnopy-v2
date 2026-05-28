@@ -2,11 +2,11 @@
 
 # NEW README
 
-# Introduction
+## Introduction
 
 This Git branch is a revision and reimplementation of Somnopy 0.0.9 by Ryan Zaid. Main changes include integration of swa into spso functions, spectrogram functionality, and jupyter notebook usability. The goal of this revision is to make somnopy more easily accessible and usable by everyone in the lab, including those without computer science backgrounds. Simplification of code and setup is therefore a core part of this branch.
 
-# Setup
+## Setup
 
 NOTE: setup only needs to be performed once per computer, if pipeline has already been set up on your computer, skip to Usage section.
 
@@ -24,7 +24,7 @@ To download the latest version of the Somnopy package and pipeline, you also nee
 7. Done!
 
 
-# Usage
+## Usage
 
 Now that the Somnopy package has been set up, let's look at how to run it. 
 
@@ -37,6 +37,68 @@ Now that the Somnopy package has been set up, let's look at how to run it.
 7. Run each cell within the notebook by clicking the play button to the left of the cells. 
 8. Enjoy!!!
 
+## Update
+
+If Somnopy has already been set up on your computer and you want to download the latest changes to the package or pipeline notebook, open **Anaconda Prompt** and navigate to the `somnopy-v2` folder.
+
+For example:
+
+```bash
+cd path\to\somnopy-v2
+```
+
+Then make sure you are on the correct branch:
+
+```bash
+git branch
+```
+
+You should see `ryan` listed with a `*` next to it. If not, switch to the `ryan` branch:
+
+```bash
+git checkout ryan
+```
+
+To download the latest changes, run:
+
+```bash
+git pull origin ryan
+```
+
+If Git says `Already up to date`, then you already have the newest version.
+
+After pulling changes, activate the Somnopy environment:
+
+```bash
+conda activate somnopy
+```
+
+If package dependencies have changed, update the environment:
+
+```bash
+conda env update -n somnopy -f environment.yml --prune
+```
+
+Then reinstall the local Somnopy package:
+
+```bash
+pip install -e .
+```
+
+Finally, reopen VSCode or restart the notebook kernel before running `spso_pipeline.ipynb` again.
+
+### If Git says your local changes would be overwritten
+
+This usually means you edited one of the files that Git is trying to update. If you want to keep your changes, save a copy of the edited file somewhere else before updating. For example, if you edited the notebook, save a copy with a different name before running `git pull`.
+
+After saving your copy, you can discard local changes and update with:
+
+```bash
+git restore .
+git pull origin ryan
+```
+
+Only use `git restore .` if you are sure you do not need the local changes inside the repository.
 
 
 

@@ -15,7 +15,7 @@ from somnopy.polysomnography import PolySomnoGraphy
 # TODO: Can we look at the spindle frequency
 
 
-def get_sosp(psg: PolySomnoGraphy, file_name, interest_stage=('N2', 'SWS'),
+def get_sosp(psg: PolySomnoGraphy, file_name, interest_stage=['N2', 'SWS'],
              sp_method='Hahn2020',
              so_method='Staresina', coupling=False, swa=False,
              filter_freq=None, duration=None, filter_type: str = 'fir', l_freq: float = None,
@@ -92,7 +92,7 @@ def get_sosp(psg: PolySomnoGraphy, file_name, interest_stage=('N2', 'SWS'),
     return event_summary, cp_event, so_waveform
 
 
-def get_sosp_for_folder(raw_folder: str, stage_folder: str, interest_stage=('N2', 'SWS'),
+def get_sosp_for_folder(raw_folder: str, stage_folder: str, interest_stage=['N2', 'SWS'],
                         sp_method='Hahn2020',
                         so_method='Staresina', coupling=True, swa=False, scoring_dur=30, rerefer=False, chan_limit=None,
                         ch_drop=[], skip_header=True, skip_footer=0,
@@ -178,28 +178,38 @@ def get_sosp_for_folder(raw_folder: str, stage_folder: str, interest_stage=('N2'
 
             if os.path.isfile(os.path.join(stage_folder, f"{file_name}.mat")):
                 stage_path = os.path.join(stage_folder, f"{file_name}.mat")
-                psg = PolySomnoGraphy(file_path, hypnogram_path=stage_path, hypnogram_type='Hume',
-                                      skip_header=skip_header, interval=scoring_dur,
-                                      bad_epoch=bad_epoch, rerefer=rerefer, chan_limit=chan_limit, drop_chan=ch_drop,
-                                      montage_temp=montage_temp, is_montage=is_montage)
+                try:
+                    psg = PolySomnoGraphy(file_path, hypnogram_path=stage_path, hypnogram_type='Hume',
+                                        skip_header=skip_header, interval=scoring_dur,
+                                        bad_epoch=bad_epoch, rerefer=rerefer, chan_limit=chan_limit, drop_chan=ch_drop,
+                                        montage_temp=montage_temp, is_montage=is_montage)
+                
+                except:
+                    print(f"Participant {file_name} ran into error while attempting to store data in somnopy's PSG class")
             elif os.path.isfile(os.path.join(stage_folder, f"{file_name}.txt")):
                 stage_path = os.path.join(stage_folder, f"{file_name}.txt")
-                psg = PolySomnoGraphy(file_path, hypnogram_path=stage_path, hypnogram_type='RemLogic',
-                                      skip_header=skip_header, interval=scoring_dur,
-                                      bad_epoch=bad_epoch, rerefer=rerefer, chan_limit=chan_limit, drop_chan=ch_drop,
-                                      montage_temp=montage_temp, is_montage=is_montage)
+                try:
+                    psg = PolySomnoGraphy(file_path, hypnogram_path=stage_path, hypnogram_type='RemLogic',
+                                        skip_header=skip_header, interval=scoring_dur,
+                                        bad_epoch=bad_epoch, rerefer=rerefer, chan_limit=chan_limit, drop_chan=ch_drop,
+                                        montage_temp=montage_temp, is_montage=is_montage)
+                
+                except:
+                    print(f"Participant {file_name} ran into error while attempting to store data in somnopy's PSG class")
             else:
                 print(f"Neither {file_name}.mat nor {file_name}.txt exists in the folder.")
 
-            event_summary, coupling_event, so_waveform = get_sosp(psg, file_name,
-                                                                  interest_stage=interest_stage, sp_method=sp_method,
-                                                                  so_method=so_method, coupling=coupling, swa=swa,
-                                                                  filter_freq=filter_freq, duration=duration,
-                                                                  filter_type=filter_type, l_freq=l_freq,
-                                                                  h_freq=h_freq, dur_lower=dur_lower,
-                                                                  dur_upper=dur_upper,
-                                                                  baseline=baseline, verbose=verbose, outpath=outpath)
-
+            try:
+                event_summary, coupling_event, so_waveform = get_sosp(psg, file_name,
+                                                                    interest_stage=interest_stage, sp_method=sp_method,
+                                                                    so_method=so_method, coupling=coupling, swa=swa,
+                                                                    filter_freq=filter_freq, duration=duration,
+                                                                    filter_type=filter_type, l_freq=l_freq,
+                                                                    h_freq=h_freq, dur_lower=dur_lower,
+                                                                    dur_upper=dur_upper,
+                                                                    baseline=baseline, verbose=verbose, outpath=outpath)
+            except:
+                print(f"Participant {file_name} ran into error while running spindle coupling function")
             event_summary_all[file_name] = event_summary
             coupling_event_all[file_name] = coupling_event
             so_waveform_all[file_name] = so_waveform
