@@ -4,6 +4,7 @@ import os
 import pandas as pd
 
 from somnopy.polysomnography import PolySomnoGraphy
+import traceback
 
 
 # TODO: Analyze Melissa's data for SWA and Spindles, data in infantro1/data/psg/datatobeanalyzed, n y: is in presentations/flux 2025
@@ -178,43 +179,36 @@ def get_sosp_for_folder(raw_folder: str, stage_folder: str, interest_stage=['N2'
 
             if os.path.isfile(os.path.join(stage_folder, f"{file_name}.mat")):
                 stage_path = os.path.join(stage_folder, f"{file_name}.mat")
-                try:
-                    psg = PolySomnoGraphy(file_path, hypnogram_path=stage_path, hypnogram_type='Hume',
-                                        skip_header=skip_header, interval=scoring_dur,
-                                        bad_epoch=bad_epoch, rerefer=rerefer, chan_limit=chan_limit, drop_chan=ch_drop,
-                                        montage_temp=montage_temp, is_montage=is_montage)
+                psg = PolySomnoGraphy(file_path, hypnogram_path=stage_path, hypnogram_type='Hume',
+                                    skip_header=skip_header, interval=scoring_dur,
+                                    bad_epoch=bad_epoch, rerefer=rerefer, chan_limit=chan_limit, drop_chan=ch_drop,
+                                    montage_temp=montage_temp, is_montage=is_montage)
                 
-                except:
-                    print(f"Participant {file_name} ran into error while attempting to store data in somnopy's PSG class")
             elif os.path.isfile(os.path.join(stage_folder, f"{file_name}.txt")):
                 stage_path = os.path.join(stage_folder, f"{file_name}.txt")
-                try:
-                    psg = PolySomnoGraphy(file_path, hypnogram_path=stage_path, hypnogram_type='RemLogic',
-                                        skip_header=skip_header, interval=scoring_dur,
-                                        bad_epoch=bad_epoch, rerefer=rerefer, chan_limit=chan_limit, drop_chan=ch_drop,
-                                        montage_temp=montage_temp, is_montage=is_montage)
+                psg = PolySomnoGraphy(file_path, hypnogram_path=stage_path, hypnogram_type='RemLogic',
+                                    skip_header=skip_header, interval=scoring_dur,
+                                    bad_epoch=bad_epoch, rerefer=rerefer, chan_limit=chan_limit, drop_chan=ch_drop,
+                                    montage_temp=montage_temp, is_montage=is_montage)
                 
-                except:
-                    print(f"Participant {file_name} ran into error while attempting to store data in somnopy's PSG class")
             else:
                 print(f"Neither {file_name}.mat nor {file_name}.txt exists in the folder.")
 
-            try:
-                event_summary, coupling_event, so_waveform = get_sosp(psg, file_name,
-                                                                    interest_stage=interest_stage, sp_method=sp_method,
-                                                                    so_method=so_method, coupling=coupling, swa=swa,
-                                                                    filter_freq=filter_freq, duration=duration,
-                                                                    filter_type=filter_type, l_freq=l_freq,
-                                                                    h_freq=h_freq, dur_lower=dur_lower,
-                                                                    dur_upper=dur_upper,
-                                                                    baseline=baseline, verbose=verbose, outpath=outpath)
-            except:
-                print(f"Participant {file_name} ran into error while running spindle coupling function")
+            event_summary, coupling_event, so_waveform = get_sosp(psg, file_name,
+                                                                interest_stage=interest_stage, sp_method=sp_method,
+                                                                so_method=so_method, coupling=coupling, swa=swa,
+                                                                filter_freq=filter_freq, duration=duration,
+                                                                filter_type=filter_type, l_freq=l_freq,
+                                                                h_freq=h_freq, dur_lower=dur_lower,
+                                                                dur_upper=dur_upper,
+                                                                baseline=baseline, verbose=verbose, outpath=outpath)
             event_summary_all[file_name] = event_summary
             coupling_event_all[file_name] = coupling_event
             so_waveform_all[file_name] = so_waveform
-        except:
+        except Exception as e:
             print(f"Participant {file_name} was skipped due to errors processing files.")
+            print(f"Error: {e}")
+            traceback.print_exc()
             remaining_participants.append(file_name)
     if remaining_participants != []:
         print("The following participants couldn't be completed:")
