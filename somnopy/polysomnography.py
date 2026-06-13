@@ -301,17 +301,17 @@ class PolySomnoGraphy:
                                               verbose=verbose)
         return self.slow_oscillations
 
-    def pac(self, verbose: bool = True, file_name: str = "Participant"):
+    def pac(self, verbose: bool = True, file_name: str = "Participant", outpath=None):
         if self.spindles is None or self.slow_oscillations is None:
             raise Warning("Attempting to run before detect_spindles or detect_slow_oscillations")
         event_summary = pd.merge(self.slow_oscillations[2], self.spindles[2], on=['stage', 'channel'], how='outer')
         cp_event, event_summary = event_lock(self.raw, self.slow_oscillations[1],
-                                             self.spindles[1], event_summary, verbose=verbose)
+                                             self.spindles[1], event_summary, verbose=verbose, outpath=outpath, file_name=file_name)
         cp_event.insert(0, 'subject', file_name)
-        self.pac = pac(self.raw, cp_event, event_summary, verbose=verbose)
+        self.pac = pac(self.raw, cp_event, event_summary, verbose=verbose, outpath=outpath, file_name=file_name)
         return self.pac
 
     def detect_swa(self, stages=None, file_name='id', l_freq=0.5, h_freq=4):
-        self.swa = detect_swa(self.raw, stages=stages, psg=self.segments, file_name=file_name, l_freq=l_freq,
+        self.swa = detect_swa(self.raw, self.segments, target_stage=stages, l_freq=l_freq,
                               h_freq=h_freq)
         return self.swa

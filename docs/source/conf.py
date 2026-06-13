@@ -10,8 +10,8 @@ import sys
 sys.path.insert(0, os.path.abspath('..'))
 
 project = 'somnopy'
-copyright = '2025, Roger Balcells Sanchez, Thea Ng, Atif Abedeen, Lindsey Mooney'
-author = 'Roger Balcells Sanchez, Thea Ng, Atif Abedeen, Lindsey Mooney'
+copyright = '2025, Roger Balcells Sanchez, Thea Ng, Atif Abedeen, Lindsey Mooney, Ryan Zaid'
+author = 'Roger Balcells Sanchez, Thea Ng, Atif Abedeen, Lindsey Mooney, Ryan Zaid'
 release = '0.0.8'
 
 # -- General configuration ---------------------------------------------------

@@ -1,0 +1,17 @@
+name: somnopy
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.11
+  - pip
+
+  # Notebook/development environment
+  - jupyter
+  - notebook
+  - ipykernel
+
+  # Install somnopy and its package dependencies from pyproject.toml
+  - pip:
+      - -e ./somnopy
